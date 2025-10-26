@@ -55,7 +55,7 @@ function onClickCheckAll() {
 				<InputNumber
 					inputId="albaran-riego-ce"
 					prefix="+"
-					:max-fraction-digits="1"
+					:max-fraction-digits="4"
 					fluid
 					name="riegoCE"/>
 				<Message

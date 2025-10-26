@@ -69,7 +69,6 @@ const sinInventarioChecked = computed({
 			selectionMode="single"
 			:disabled="sinInventarioChecked"
 			tableStyle="min-width: 50rem">
-			<Column field="id" header="Código"></Column>
 			<Column field="nombre" header="Descripción"></Column>
 			<Column field="materiaActiva" header="Materia Activa"></Column>
 			<Column field="plaga" header="Plaga"></Column>

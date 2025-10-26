@@ -366,7 +366,7 @@ COAGRISAN O.P. 1.011/551
 	${albaran.productos.map((producto: any) => `
 	<tr>
 		<td>${({
-		pulveriador: "Pulverizador",
+		pulverizador: "Pulverizador",
 		espolvoreador: "Espolvoreador",
 		riego: "Riego",
 		mochila: "Mochila",

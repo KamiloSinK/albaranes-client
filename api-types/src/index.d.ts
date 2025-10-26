@@ -1,5 +1,5 @@
 export type AlbaranDuracionPlanAbono = "1semana" | "15dias" | "1mes" | "indefinido";
-export type AlbaranMaquinaria = "pulveriador" | "espolvoreador" | "riego" | "mochila" | "siembra-manual";
+export type AlbaranMaquinaria = "pulverizador" | "espolvoreador" | "riego" | "mochila" | "siembra-manual";
 export type AlbaranNivel = "alta" | "media" | "baja";
 export type AlbaranDiasSemana = "lunes" | "martes" | "miercoles" | "jueves" | "viernes" | "sabado" | "domingo";
 export type AlbaranLaboresCulturales = "eliminar-malas-hierbas" | "colocar-placas" | "despuntar" | "deshijar" | "deshojar" | "eliminar-plantas-viroticas" | "reponer-abejorros" | "entuturar" | "descolgar";
