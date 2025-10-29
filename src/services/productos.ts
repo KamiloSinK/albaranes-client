@@ -19,7 +19,7 @@ export async function retrieveProductos(filter: RetrieveProductsQueryParams) {
 export async function retrieveProducto(id: string | number) {
 	if (typeof id === "number") id = id.toString();
 
-	return await fetch(`${import.meta.env.VITE_API_HOST}/producto/${id}`, {
+	return await fetch(`${import.meta.env.VITE_API_HOST}/productos/${id}`, {
 		method: "GET",
 		headers: {
 			Accept: "application/json"

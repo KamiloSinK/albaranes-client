@@ -8,6 +8,8 @@ import {Form, type FormResolverOptions, type FormSubmitEvent} from "@primevue/fo
 import Menu from "primevue/menu";
 import {reactive, ref} from "vue";
 import type {MenuItem} from "primevue/menuitem";
+import { useNetworkStatus } from "@/composables/useNetworkStatus";
+import { offlineStorage } from "@/services/offlineStorage";
 import GeneralTab from "@/albaran/tabs/GeneralTab.vue";
 import ProductosTab from "@/albaran/tabs/ProductosTab.vue";
 import ProductDialog from "@/albaran/ProductDialog.vue";
@@ -38,6 +40,9 @@ const workaroundNewButton = ref();
 const workaroundSaveButton = ref();
 
 const confirm = useConfirm();
+
+// Composable para detectar estado de conexión
+const { isOnline, checkConnection } = useNetworkStatus();
 
 export interface ProductData extends RetrieveProductResponse, Omit<AlbaranProductType, "productoId"> {
 }
@@ -348,54 +353,94 @@ async function onClickSocioSiguiente() {
 	await workaroundGeneralTab.value?.loadSocioSiguiente();
 }
 
+// Función auxiliar para construir el objeto NewAlbaranRequest
+function buildAlbaranData(e: FormSubmitEvent): NewAlbaranRequest {
+	return {
+		general: {
+			anio: new Date().getFullYear(),
+			fincaId: parseInt(e.values.fincaId),
+			socioId: parseInt(e.values.socioId),
+			tecnicoId: e.values.tecnico,
+			fechaEjecucion: e.values.fechaEjecucion.toISOString().split("T")[0],
+			fechaInstrucciones: e.values.fechaInstrucciones.toISOString().split("T")[0],
+			pendiente: e.values.pendiente ?? false,
+			plazoEjecucionDias: e.values.plazoEjecucion,
+			sectoresActivados: e.values.sectorIds ?? [],
+			sinInventario: e.values.sinInventario ?? false,
+			motivoSinInventario: e.values.motivoSinInventario ?? undefined
+		},
+		productos: dialogState.products.map<AlbaranProductType>(product => ({
+			productoId: product.id,
+			maquinaria: product.maquinaria,
+			nivel: product.nivel,
+			gastosL: product.gastosL
+		})),
+		abono: {
+			tanqueA: dialogState.abonosTanqueA.map<AlbaranAbonoType>(abono => ({
+				abonoId: abono.id,
+				kilos: abono.kilos
+			})),
+			tanqueB: dialogState.abonosTanqueB.map<AlbaranAbonoType>(abono => ({
+				abonoId: abono.id,
+				kilos: abono.kilos
+			}))
+		},
+		riego: {
+			ce: e.values.riegoCE,
+			lm2: e.values.riegoLm2,
+			tiempoRiegoMin: e.values.riegoTiempoMin,
+			equilibrio: e.values.riegoEquilibrio,
+			duracionPlanAbono: e.values.riegoDuracionPlanAbono,
+			tanqueDiasSemana: e.values.riegoTanqueDias ?? []
+		},
+		laboresCulturales: e.values.laboresCulturales ?? [],
+		observaciones: e.values.observaciones,
+		firma: e.values.firma
+	};
+}
+
 async function onSubmitForm(e: FormSubmitEvent) {
 	if (isLoading.value || !e.valid)
 		return;
 
 	isLoading.value = true;
+
+	// Verificar conexión a internet antes de proceder
+	const hasConnection = await checkConnection();
+	
+	if (!hasConnection) {
+		// No hay conexión - guardar offline
+		try {
+			const newData: NewAlbaranRequest = buildAlbaranData(e);
+			
+			if (dialogState.originalValues) {
+				// Es una actualización
+				const offlineId = offlineStorage.addOfflineAlbaran(
+					newData, 
+					'update', 
+					dialogState.originalValues.albaranFullId
+				);
+				alert(`Sin conexión a internet.\n\nEl albarán ha sido guardado localmente y se sincronizará automáticamente cuando se recupere la conexión.\n\nID temporal: ${offlineId}`);
+			} else {
+				// Es un nuevo albarán
+				const offlineId = offlineStorage.addOfflineAlbaran(newData, 'create');
+				alert(`Sin conexión a internet.\n\nEl nuevo albarán ha sido guardado localmente y se sincronizará automáticamente cuando se recupere la conexión.\n\nID temporal: ${offlineId}`);
+			}
+			
+			visible.value = false;
+			return;
+		} catch (error) {
+			console.error('Error al guardar offline:', error);
+			alert('Error al guardar el albarán offline. Por favor, inténtelo de nuevo.');
+			return;
+		} finally {
+			isLoading.value = false;
+		}
+	}
+
+	// Hay conexión - proceder normalmente
 	try {
-		const newData: NewAlbaranRequest = {
-			general: {
-				anio: new Date().getFullYear(),
-				fincaId: parseInt(e.values.fincaId),
-				socioId: parseInt(e.values.socioId),
-				tecnicoId: e.values.tecnico,
-				fechaEjecucion: e.values.fechaEjecucion.toISOString().split("T")[0],
-				fechaInstrucciones: e.values.fechaInstrucciones.toISOString().split("T")[0],
-				pendiente: e.values.pendiente ?? false,
-				plazoEjecucionDias: e.values.plazoEjecucion,
-				sectoresActivados: e.values.sectorIds ?? [],
-				sinInventario: e.values.sinInventario ?? false,
-				motivoSinInventario: e.values.motivoSinInventario ?? undefined
-			},
-			productos: dialogState.products.map<AlbaranProductType>(product => ({
-				productoId: product.id,
-				maquinaria: product.maquinaria,
-				nivel: product.nivel,
-				gastosL: product.gastosL
-			})),
-			abono: {
-				tanqueA: dialogState.abonosTanqueA.map<AlbaranAbonoType>(abono => ({
-					abonoId: abono.id,
-					kilos: abono.kilos
-				})),
-				tanqueB: dialogState.abonosTanqueB.map<AlbaranAbonoType>(abono => ({
-					abonoId: abono.id,
-					kilos: abono.kilos
-				}))
-			},
-			riego: {
-				ce: e.values.riegoCE,
-				lm2: e.values.riegoLm2,
-				tiempoRiegoMin: e.values.riegoTiempoMin,
-				equilibrio: e.values.riegoEquilibrio,
-				duracionPlanAbono: e.values.riegoDuracionPlanAbono,
-				tanqueDiasSemana: e.values.riegoTanqueDias ?? []
-			},
-			laboresCulturales: e.values.laboresCulturales ?? [],
-			observaciones: e.values.observaciones,
-			firma: e.values.firma
-		};
+		const newData: NewAlbaranRequest = buildAlbaranData(e);
 
 		// Check for update mode
 		if (dialogState.originalValues) {

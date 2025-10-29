@@ -1,0 +1,24 @@
+<svg width="192" height="192" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="192" height="192" rx="24" fill="#4f46e5"/>
+  <rect x="16" y="16" width="160" height="160" rx="16" fill="white"/>
+  
+  <!-- Icono de documento/albarán -->
+  <rect x="48" y="48" width="96" height="120" rx="8" fill="#4f46e5" stroke="#4f46e5" stroke-width="2"/>
+  <rect x="56" y="56" width="80" height="104" rx="4" fill="white"/>
+  
+  <!-- Líneas de texto -->
+  <rect x="64" y="72" width="64" height="4" rx="2" fill="#4f46e5"/>
+  <rect x="64" y="84" width="48" height="4" rx="2" fill="#6b7280"/>
+  <rect x="64" y="96" width="56" height="4" rx="2" fill="#6b7280"/>
+  <rect x="64" y="108" width="40" height="4" rx="2" fill="#6b7280"/>
+  
+  <!-- Sección de productos -->
+  <rect x="64" y="124" width="64" height="2" rx="1" fill="#4f46e5"/>
+  <rect x="64" y="132" width="32" height="3" rx="1.5" fill="#10b981"/>
+  <rect x="64" y="140" width="28" height="3" rx="1.5" fill="#10b981"/>
+  <rect x="64" y="148" width="36" height="3" rx="1.5" fill="#10b981"/>
+  
+  <!-- Icono de check/validación -->
+  <circle cx="144" cy="144" r="16" fill="#10b981"/>
+  <path d="M136 144l4 4 8-8" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

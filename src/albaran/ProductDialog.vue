@@ -18,7 +18,7 @@ interface SelectOptions<V> {
 }
 
 const maquinariaOptions = ref<SelectOptions<AlbaranMaquinaria>[]>([
-	{label: "Pulveriador", value: "pulveriador"},
+	{label: "Pulverizador", value: "pulverizador"},
 	{label: "Espolvoreador", value: "espolvoreador"},
 	{label: "Riego", value: "riego"},
 	{label: "Mochila", value: "mochila"},

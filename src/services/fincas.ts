@@ -19,7 +19,7 @@ export async function retrieveFincas(filter: RetrieveFincasQueryParams) {
 export async function retrieveFinca(id: string | number) {
 	if (typeof id === "number") id = id.toString();
 
-	return fetch(`${import.meta.env.VITE_API_HOST}/finca/${id}`, {
+	return fetch(`${import.meta.env.VITE_API_HOST}/fincas/${id}`, {
 		method: "GET",
 		headers: {
 			Accept: "application/json"

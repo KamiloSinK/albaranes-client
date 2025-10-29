@@ -29,7 +29,7 @@ const dialogState = defineModel<AlbaranDialogState>("dialogState", {type: Object
 			scrollHeight="300px"
 			selectionMode="single"
 			tableStyle="min-width: 50rem">
-			<Column field="id" header="Código"></Column>
+			<!-- <Column field="id" header="Código"></Column> -->
 			<Column field="nombre" header="Producto Tanque A"></Column>
 		</DataTable>
 	</div>
@@ -58,7 +58,7 @@ const dialogState = defineModel<AlbaranDialogState>("dialogState", {type: Object
 			scrollHeight="300px"
 			selectionMode="single"
 			tableStyle="min-width: 50rem">
-			<Column field="id" header="Código"></Column>
+			<!-- <Column field="id" header="Código"></Column> -->
 			<Column field="nombre" header="Producto Tanque B"></Column>
 		</DataTable>
 	</div>

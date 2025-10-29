@@ -10,6 +10,31 @@ import ListadoAlbaranesDialog from "@/ListadoAlbaranesDialog.vue";
 import ListadoProductosPorSocioDialog from "@/ListadoProductosPorSocioDialog.vue";
 import FicheroCuarentenaDialog from "@/FicheroCuarentenaDialog.vue";
 import LoginDialog from "@/LoginDialog.vue";
+import PWAInstallPrompt from "@/components/PWAInstallPrompt.vue";
+import { usePWA } from "@/composables/usePWA";
+import { useOfflineSync } from "@/composables/useOfflineSync";
+import { useNetworkStatus } from "@/composables/useNetworkStatus";
+
+// PWA functionality
+const { 
+	isInstallable, 
+	isInstalled, 
+	showInstallPrompt, 
+	installPWA, 
+	dismissInstallPrompt, 
+	showInstallDialog 
+} = usePWA();
+
+// Offline sync functionality
+const { 
+	isSyncing, 
+	syncProgress, 
+	getSyncStats, 
+	forcSync 
+} = useOfflineSync();
+
+// Network status
+const { isOnline } = useNetworkStatus();
 
 const dialogVisible = ref({
 	"AlbaranDialog": false,
@@ -46,6 +71,12 @@ const items = ref<MenuItem[]>([
 		]
 	},
 	{
+		label: "Instalar App",
+		icon: "pi pi-download",
+		command: () => showInstallDialog(),
+		visible: isInstallable.value && !isInstalled.value
+	},
+	{
 		label: "Cerrar sesión",
 		command: async () => {
 			const response = await fetch(`${import.meta.env.VITE_API_HOST}/user/logout`, {
@@ -76,6 +107,28 @@ if (!sessionCookie) {
 <template>
 	<ConfirmDialog></ConfirmDialog>
 	<Menubar :model="items" class="main-menu w-full"/>
+	
+	<!-- Status indicators -->
+	<div class="status-bar">
+		<!-- Connection status -->
+		<div class="status-item" :class="{ 'offline': !isOnline }">
+			<i :class="isOnline ? 'pi pi-wifi' : 'pi pi-wifi-off'"></i>
+			<span>{{ isOnline ? 'Conectado' : 'Sin conexión' }}</span>
+		</div>
+		
+		<!-- Sync status -->
+		<div v-if="isSyncing" class="status-item syncing">
+			<i class="pi pi-spin pi-spinner"></i>
+			<span>Sincronizando... ({{ syncProgress.current }}/{{ syncProgress.total }})</span>
+		</div>
+		
+		<!-- Offline data indicator -->
+		<div v-if="getSyncStats().totalPending > 0" class="status-item pending" @click="forcSync" title="Hacer clic para sincronizar manualmente">
+			<i class="pi pi-cloud-upload"></i>
+			<span>{{ getSyncStats().totalPending }} pendiente(s)</span>
+		</div>
+	</div>
+	
 	<div class="centerdiv">
 		<Button
 			icon="pi pi-receipt"
@@ -97,12 +150,19 @@ if (!sessionCookie) {
 	<ListadoProductosPorSocioDialog v-model:visible="dialogVisible['ListadoProductosPorSocioDialog']" />
 	<FicheroCuarentenaDialog v-model:visible="dialogVisible['FicheroCuarentenaDialog']" />
 	<LoginDialog v-model:visible="dialogVisible['LoginDialog']" />
+	
+	<!-- PWA Install Prompt -->
+	<PWAInstallPrompt 
+		v-model:visible="showInstallPrompt"
+		@install="installPWA"
+		@dismiss="dismissInstallPrompt"
+	/>
 </template>
 
 <style scoped>
 .centerdiv {
 	width: 100%;
-	height: calc(100vh - 50px);
+	height: calc(100vh - 90px); /* Ajustado para dar espacio a la barra de estado */
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -123,5 +183,75 @@ if (!sessionCookie) {
 
 .main-menu {
 	border-radius: 0;
+}
+
+/* Status bar styles */
+.status-bar {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+	padding: 0.5rem 1rem;
+	background-color: #f8f9fa;
+	border-bottom: 1px solid #e9ecef;
+	font-size: 0.875rem;
+	min-height: 40px;
+}
+
+.status-item {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.25rem 0.75rem;
+	border-radius: 0.375rem;
+	background-color: #e7f3ff;
+	color: #0066cc;
+	border: 1px solid #b3d9ff;
+	transition: all 0.2s ease;
+}
+
+.status-item i {
+	font-size: 1rem;
+}
+
+.status-item.offline {
+	background-color: #ffe7e7;
+	color: #cc0000;
+	border-color: #ffb3b3;
+}
+
+.status-item.syncing {
+	background-color: #fff3e0;
+	color: #e65100;
+	border-color: #ffcc80;
+}
+
+.status-item.pending {
+	background-color: #f3e5f5;
+	color: #7b1fa2;
+	border-color: #ce93d8;
+	cursor: pointer;
+}
+
+.status-item.pending:hover {
+	background-color: #e1bee7;
+	transform: translateY(-1px);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+	.status-bar {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.5rem;
+		padding: 0.75rem 1rem;
+	}
+	
+	.status-item {
+		font-size: 0.8rem;
+	}
+	
+	.centerdiv {
+		height: calc(100vh - 120px);
+	}
 }
 </style>

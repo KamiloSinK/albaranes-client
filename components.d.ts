@@ -23,6 +23,7 @@ declare module 'vue' {
     Menubar: typeof import('primevue/menubar')['default']
     Message: typeof import('primevue/message')['default']
     Password: typeof import('primevue/password')['default']
+    PWAInstallPrompt: typeof import('./src/components/PWAInstallPrompt.vue')['default']
     Select: typeof import('primevue/select')['default']
     Tab: typeof import('primevue/tab')['default']
     TabList: typeof import('primevue/tablist')['default']

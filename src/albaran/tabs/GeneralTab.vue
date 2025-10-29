@@ -3,7 +3,7 @@
   -->
 
 <script setup lang="ts">
-import {ref} from "vue";
+import {ref, onMounted} from "vue";
 import type {SelectChangeEvent, VirtualScrollerLazyEvent} from "primevue";
 import * as albaranes from "@/services/albaranes";
 import * as socios from "@/services/socios";
@@ -43,6 +43,10 @@ const loadingTecnico = ref<boolean>(false);
 const sociosList = ref<RetrieveSocioResponse[]>([]);
 const fincasList = ref<RetrieveFincaResponse[]>([]);
 const tecnicosList = ref<TecnicoOption[]>([]);
+
+// Variables reactivas para los valores seleccionados de los Select
+const selectedSocioId = ref<number | null>(null);
+const selectedFincaId = ref<number | null>(null);
 
 async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
 	loadingSocio.value = true;
@@ -86,6 +90,50 @@ async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
 
 	} finally {
 		loadingSocio.value = false;
+	}
+}
+
+// Función para cargar socios inicialmente
+async function loadInitialSocios() {
+	if (sociosList.value.length > 0) return; // Ya están cargados
+	
+	loadingSocio.value = true;
+	try {
+		const response = await socios.retrieveSocios({
+			limit: 1000, // Cargar los primeros 1000 socios
+			offset: 0
+		});
+
+		if (response.ok) {
+			const data: RetrieveSocioResponse[] = await response.json();
+			sociosList.value = data;
+		}
+	} catch (err: unknown) {
+		console.error("Error al cargar socios iniciales:", err);
+	} finally {
+		loadingSocio.value = false;
+	}
+}
+
+// Función para cargar fincas inicialmente
+async function loadInitialFincas() {
+	if (fincasList.value.length > 0) return; // Ya están cargadas
+	
+	loadingFinca.value = true;
+	try {
+		const response = await fincas.retrieveFincas({
+			limit: 1000, // Cargar las primeras 1000 fincas
+			offset: 0
+		});
+
+		if (response.ok) {
+			const data: RetrieveFincaResponse[] = await response.json();
+			fincasList.value = data;
+		}
+	} catch (err: unknown) {
+		console.error("Error al cargar fincas iniciales:", err);
+	} finally {
+		loadingFinca.value = false;
 	}
 }
 
@@ -308,9 +356,43 @@ async function onClickFind() {
 
 function onChangeSelectSocio(e: SelectChangeEvent) {
 	props.formSlot.socioId.value = e.value.toString().padStart(4, "0");
+	selectedSocioId.value = e.value;
 
 	if (props.formSlot.socioId.value && props.formSlot.fincaId.value && !dialogState.value.originalValues)
 		changePlaceholderNewItem().then().catch();
+}
+
+// Función optimizada para buscar socio por código (solo en lista ya cargada)
+function onChangeSocioId() {
+	const codigo = props.formSlot.socioId.value;
+	
+	// Limpiar selección si el input está vacío
+	if (!codigo || codigo.length === 0) {
+		selectedSocioId.value = null;
+		return;
+	}
+
+	// Solo buscar si se han ingresado al menos 3 caracteres
+	if (codigo.length < 3) {
+		selectedSocioId.value = null;
+		return;
+	}
+
+	// Buscar el socio en la lista ya cargada por su ID (código)
+	const socioEncontrado = sociosList.value.find(socio => 
+		socio.id.toString().padStart(4, "0") === codigo.padStart(4, "0")
+	);
+
+	if (socioEncontrado) {
+		selectedSocioId.value = socioEncontrado.id;
+		
+		// Actualizar placeholder si es necesario
+		if (props.formSlot.fincaId.value && !dialogState.value.originalValues)
+			changePlaceholderNewItem().then().catch();
+	} else {
+		// Si no se encuentra en la lista ya cargada, limpiar selección
+		selectedSocioId.value = null;
+	}
 }
 
 async function changePlaceholderNewItem() {
@@ -336,7 +418,9 @@ function loadAlbaranToForm(data: RetrieveAlbaranResponse) {
 	});
 
 	props.formSlot.socioId.value = data.general.socioId.toString().padStart(4, "0");
+	selectedSocioId.value = data.general.socioId; // Sincronizar el Select con el código cargado
 	props.formSlot.fincaId.value = data.general.fincaId.toString().padStart(4, "0");
+	selectedFincaId.value = data.general.fincaId; // Sincronizar el Select de finca con el código cargado
 	props.formSlot.sectorIds.value = data.general.sectoresActivados;
 	props.formSlot.tecnico.value = data.general.tecnicoId;
 	props.formSlot.fechaInstrucciones.value = new Date(data.general.fechaInstrucciones);
@@ -399,6 +483,7 @@ async function onChangeSelectFinca(e: SelectChangeEvent) {
 		props.formSlot.sectorIdsPreview.value = fullSectorIds.join("-");
 		props.formSlot.fincaId.value = e.value.toString().padStart(4, "0");
 		dialogState.value.selectedFincaSectorIds = data.sectorIds;
+		selectedFincaId.value = e.value; // Sincronizar con la variable reactiva
 
 		if (props.formSlot.socioId.value && props.formSlot.fincaId.value && !dialogState.value.originalValues)
 			changePlaceholderNewItem().then().catch();
@@ -409,12 +494,46 @@ async function onChangeSelectFinca(e: SelectChangeEvent) {
 	}
 }
 
+// Función para buscar finca por ID y actualizar el Select
+function onChangeFincaId(event: Event) {
+	const target = event.target as HTMLInputElement;
+	const fincaId = target.value.trim();
+	
+	// Solo buscar si se han ingresado al menos 3 caracteres
+	if (fincaId.length < 3) {
+		selectedFincaId.value = null;
+		return;
+	}
+	
+	// Buscar la finca en la lista ya cargada
+	const finca = fincasList.value.find(f => f.id.toString().padStart(4, "0") === fincaId.padStart(4, "0"));
+	
+	if (finca) {
+		selectedFincaId.value = finca.id;
+		// Actualizar los sectores y otros campos relacionados
+		const fullSectorIds = finca.sectorIds.map((sectorId: any) => finca.id.toString().padStart(4, "0") + sectorId.toString().padStart(4, "0"));
+		props.formSlot.sectorIdsPreview.value = fullSectorIds.join("-");
+		dialogState.value.selectedFincaSectorIds = finca.sectorIds;
+		
+		if (props.formSlot.socioId.value && props.formSlot.fincaId.value && !dialogState.value.originalValues)
+			changePlaceholderNewItem().then().catch();
+	} else {
+		selectedFincaId.value = null;
+	}
+}
+
 function onClickCheckAll() {
 	if (dialogState.value.selectedFincaSectorIds.length <= 0)
 		return;
 
 	props.formSlot.sectorIds.value = dialogState.value.selectedFincaSectorIds;
 }
+
+// Cargar socios y fincas inicialmente cuando se monta el componente
+onMounted(() => {
+	loadInitialSocios();
+	loadInitialFincas();
+});
 </script>
 
 <template>
@@ -448,9 +567,11 @@ function onClickCheckAll() {
 				id="albaran-socio-id"
 				spellcheck="false"
 				class="w-17 mr-2"
-				:disabled="dialogState.originalValues !== null"/>
+				:disabled="dialogState.originalValues !== null"
+				@input="onChangeSocioId"/>
 			<div class="flex-1 flex flex-col gap-1">
 				<Select
+					v-model="selectedSocioId"
 					:options="sociosList"
 					:disabled="dialogState.originalValues !== null"
 					:virtualScrollerOptions="{
@@ -484,9 +605,11 @@ function onClickCheckAll() {
 				spellcheck="false"
 				class="w-17 mr-2"
 				inputmode="numeric"
-				:disabled="dialogState.originalValues !== null"/>
+				:disabled="dialogState.originalValues !== null"
+				@input="onChangeFincaId"/>
 			<div class="flex-1 flex flex-col gap-1">
 				<Select
+					v-model="selectedFincaId"
 					:options="fincasList"
 					:disabled="dialogState.originalValues !== null"
 					:virtualScrollerOptions="{

@@ -3,17 +3,57 @@
   -->
 
 <script setup lang="ts">
-import {ref} from "vue";
+import {computed, onMounted, ref, watch} from "vue";
 import type {RetrieveAbonoResponse} from "@coa/api-types";
-import type {VirtualScrollerLazyEvent} from "primevue";
+import type {DialogProps, VirtualScrollerLazyEvent} from "primevue";
 import * as abonos from "@/services/abonos";
 import type {FormResolverOptions, FormSubmitEvent} from "@primevue/forms";
 
 const visible = defineModel("visible", {type: Boolean, required: true, default: false});
 const emit = defineEmits(["addAbono"]);
 
+const dialog = ref<any>()
+const form = ref<any>()
+
 const abonoList = ref<RetrieveAbonoResponse[]>([]);
 const loadingAbono = ref<boolean>(false);
+
+// Estado para los campos del formulario
+const selectedAbono = ref<RetrieveAbonoResponse | null>(null);
+const kilosValue = ref<number | null>(null);
+
+// Variable para almacenar la referencia del event listener
+let keydownListener: ((event: KeyboardEvent) => void) | null = null;
+
+// Controlar el ciclo de vida del evento Enter basado en la visibilidad del diálogo
+watch(visible, (newValue) => {
+	if (newValue) {
+		// Diálogo se abre - agregar event listener
+		if (keydownListener) {
+			document.removeEventListener('keydown', keydownListener);
+		}
+		
+		keydownListener = (event: KeyboardEvent) => {
+			if (event.key === 'Enter') {
+				// Validar que ambos campos tengan datos válidos
+				if (isFormValid.value) {
+					event.preventDefault();
+					// Proceder con el guardado normal
+					submitForm();
+				}
+			}
+		};
+		
+		document.addEventListener('keydown', keydownListener);
+	} else {
+		// Diálogo se cierra - remover event listener y limpiar formulario
+		if (keydownListener) {
+			document.removeEventListener('keydown', keydownListener);
+			keydownListener = null;
+		}
+		clearForm();
+	}
+});
 
 async function onLazyLoadAbonos(e: VirtualScrollerLazyEvent) {
 	if (loadingAbono.value)
@@ -65,6 +105,38 @@ function formResolver(e: FormResolverOptions): Record<string, any> {
 	};
 }
 
+// Función para validar los campos usando el estado
+const isFormValid = computed(() => {
+	return selectedAbono.value !== null && 
+	       kilosValue.value !== null && 
+	       kilosValue.value > 0 && 
+	       !isNaN(kilosValue.value);
+});
+
+// Función para hacer el guardado usando el estado
+async function submitForm() {
+	if (!isFormValid.value) {
+		return;
+	}
+
+	// Crear el objeto de datos similar al FormSubmitEvent
+	const formData = {
+		valid: true,
+		values: {
+			abono: selectedAbono.value,
+			kilos: kilosValue.value
+		}
+	};
+
+	emit("addAbono", formData);
+	
+	// Limpiar el formulario después de guardar
+	await clearForm();
+	
+	// Cerrar el diálogo
+	visible.value = false;
+}
+
 function onSubmitForm(e: FormSubmitEvent) {
 	if (!e.valid)
 		return;
@@ -73,21 +145,34 @@ function onSubmitForm(e: FormSubmitEvent) {
 	visible.value = false;
 }
 
+// Función para limpiar los datos
+async function clearForm() {
+	if(form.value) form.value.reset();
+	selectedAbono.value = null;
+	kilosValue.value = null;
+}
+
+
+
 </script>
 
 <template>
 	<Dialog
+		ref="dialog"
 		modal
 		header="Abono - Nuevo"
 		v-model:visible="visible"
 		:style="{ width: '40rem' }"
-		:breakpoints="{ '512px': '95vw' }">
-		<Form v-slot="$form" :resolver="formResolver" @submit="onSubmitForm">
+		:breakpoints="{ '512px': '95vw' }"
+		@hide="clearForm"
+		>
+		<Form ref="form" v-slot="$form" :resolver="formResolver" @submit="onSubmitForm">
 			<div class="space-y-4 m-0 p-4">
 				<div class="flex items-center">
 					<label class="w-28 text-end font-semibold pr-2">Producto:</label>
 					<div class="flex-1 flex flex-col gap-1">
 						<Select
+							v-model="selectedAbono"
 							:options="abonoList"
 							:virtualScrollerOptions="{
 								lazy: true,
@@ -102,11 +187,11 @@ function onSubmitForm(e: FormSubmitEvent) {
 							filter
 							class="w-full"/>
 						<Message
-							v-if="$form.abono?.invalid ?? false"
+							v-if="selectedAbono === null"
 							severity="error"
 							size="small"
 							variant="simple"
-							v-text="$form.abono.error.message">
+							text="Campo obligatorio">
 						</Message>
 					</div>
 				</div>
@@ -114,16 +199,17 @@ function onSubmitForm(e: FormSubmitEvent) {
 					<label class="w-28 text-end font-semibold pr-2" for="albaran-new-product-gastos">Kilos:</label>
 					<div class="flex-1 flex flex-col gap-1">
 						<InputNumber
+							v-model="kilosValue"
 							:useGrouping="false"
 							inputId="albaran-new-product-gastos"
 							name="kilos"
 							class="w-full"/>
 						<Message
-							v-if="$form.kilos?.invalid ?? false"
+							v-if="kilosValue === null || kilosValue <= 0 || isNaN(kilosValue)"
 							severity="error"
 							size="small"
 							variant="simple"
-							v-text="$form.kilos.error.message">
+							text="Debe ser un número mayor que 0">
 						</Message>
 					</div>
 				</div>
@@ -134,16 +220,16 @@ function onSubmitForm(e: FormSubmitEvent) {
 					icon="pi pi-clipboard"
 					label="Limpiar datos"
 					iconPos="top"
-					type="reset"
+					@click="clearForm"
 					class="large-icon-button"
 					variant="outlined"/>
 				<Button
 					icon="pi pi-save"
 					label="Grabar"
 					iconPos="top"
-					type="submit"
+					@click="submitForm"
 					class="large-icon-button"
-					:disabled="!$form.valid"
+					:disabled="!isFormValid"
 					variant="outlined"/>
 			</div>
 		</Form>

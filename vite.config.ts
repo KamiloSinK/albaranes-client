@@ -25,31 +25,48 @@ export default defineConfig({
 		}),
 		VitePWA({
 			registerType: "autoUpdate",
-			includeAssets: ["favicon.png", "favicon.ico"],
+			includeAssets: ["favicon.png", "favicon.ico", "icon-192.png", "icon-512.png", "apple-touch-icon.png"],
 			manifest: {
-				name: "Coagrisan",
+				name: "Coagrisan - Gestión de Albaranes",
 				short_name: "Coagrisan",
-				description: "Aplicación web de Coagrisan",
-				theme_color: "#ffffff",
-				background_color: "#ebefff",
+				description: "Aplicación web de Coagrisan para gestión de albaranes y productos agrícolas",
+				theme_color: "#4f46e5",
+				background_color: "#ffffff",
 				icons: [
+					{
+						src: "/favicon.ico",
+						type: "image/x-icon",
+						sizes: "16x16"
+					},
 					{
 						src: "/favicon.png",
 						type: "image/png",
 						sizes: "242x242"
 					},
 					{
-						src: "/favicon.ico",
-						type: "image/x-icon",
-						sizes: "16x16"
+						src: "/icon-192.png",
+						type: "image/png",
+						sizes: "192x192",
+						purpose: "any maskable"
+					},
+					{
+						src: "/icon-512.png",
+						type: "image/png",
+						sizes: "512x512",
+						purpose: "any maskable"
 					}
 				],
 				lang: "es",
 				display: "standalone",
-				categories: ["business"],
+				categories: ["business", "productivity"],
 				scope: "/",
 				start_url: "/",
-				orientation: "landscape"
+				orientation: "any",
+				prefer_related_applications: false,
+				display_override: ["window-controls-overlay", "standalone", "minimal-ui"],
+				edge_side_panel: {
+					preferred_width: 400
+				}
 			},
 			mode: process.env.NODE_ENV === "development" ? "development" : "production",
 			strategies: "injectManifest",
