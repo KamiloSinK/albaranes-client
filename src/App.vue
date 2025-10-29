@@ -10,6 +10,18 @@ import ListadoAlbaranesDialog from "@/ListadoAlbaranesDialog.vue";
 import ListadoProductosPorSocioDialog from "@/ListadoProductosPorSocioDialog.vue";
 import FicheroCuarentenaDialog from "@/FicheroCuarentenaDialog.vue";
 import LoginDialog from "@/LoginDialog.vue";
+import PWAInstallPrompt from "@/components/PWAInstallPrompt.vue";
+import { usePWA } from "@/composables/usePWA";
+
+// PWA functionality
+const { 
+	isInstallable, 
+	isInstalled, 
+	showInstallPrompt, 
+	installPWA, 
+	dismissInstallPrompt, 
+	showInstallDialog 
+} = usePWA();
 
 const dialogVisible = ref({
 	"AlbaranDialog": false,
@@ -44,6 +56,12 @@ const items = ref<MenuItem[]>([
 				command: () => openDialog("ListadoProductosPorSocioDialog")
 			}*/
 		]
+	},
+	{
+		label: "Instalar App",
+		icon: "pi pi-download",
+		command: () => showInstallDialog(),
+		visible: isInstallable.value && !isInstalled.value
 	},
 	{
 		label: "Cerrar sesión",
@@ -97,6 +115,13 @@ if (!sessionCookie) {
 	<ListadoProductosPorSocioDialog v-model:visible="dialogVisible['ListadoProductosPorSocioDialog']" />
 	<FicheroCuarentenaDialog v-model:visible="dialogVisible['FicheroCuarentenaDialog']" />
 	<LoginDialog v-model:visible="dialogVisible['LoginDialog']" />
+	
+	<!-- PWA Install Prompt -->
+	<PWAInstallPrompt 
+		v-model:visible="showInstallPrompt"
+		@install="installPWA"
+		@dismiss="dismissInstallPrompt"
+	/>
 </template>
 
 <style scoped>
