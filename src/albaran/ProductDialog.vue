@@ -4,13 +4,20 @@
 
 <script setup lang="ts">
 import type {FormResolverOptions, FormSubmitEvent} from "@primevue/forms";
-import {ref} from "vue";
+import {ref, watch} from "vue";
 import type {AlbaranMaquinaria, AlbaranNivel, RetrieveProductResponse} from "@coa/api-types";
 import type {SelectChangeEvent, VirtualScrollerLazyEvent} from "primevue";
 import * as productos from "@/services/productos";
+import {useMasterDataCache} from "@/composables/useMasterDataCache";
+import {useNetworkStatus} from "@/composables/useNetworkStatus";
+import {cacheService} from "@/services/cacheService";
 
 const visible = defineModel("visible", {type: Boolean, required: true, default: false});
 const emit = defineEmits(["addProduct"]);
+
+// Cache y estado de red
+const {isOnline} = useNetworkStatus();
+const {getProductos, waitForInitialization} = useMasterDataCache();
 
 interface SelectOptions<V> {
 	label: string;
@@ -39,6 +46,51 @@ const previewPlazoSeguimiento = ref<string>("");
 const previewDosis = ref<string>("");
 const previewPlaga = ref<string>("");
 
+// Función para cargar productos inicialmente
+async function loadInitialProducts() {
+	if (productList.value.length > 0) return; // Ya están cargados
+	
+	loadingProduct.value = true;
+	try {
+		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
+		if (!cacheService.needsUpdate('productos')) {
+			console.log('Cache de productos válido, usando datos en cache...');
+			const cachedProducts = getProductos();
+			productList.value = cachedProducts;
+			return;
+		}
+
+		// Si no hay internet, usar cache aunque esté expirado
+		if (!isOnline.value) {
+			console.log('Sin conexión, cargando productos desde cache...');
+			const cachedProducts = getProductos();
+			productList.value = cachedProducts;
+			return;
+		}
+
+		// Solo hacer llamada a API si cache está expirado y hay conexión
+		const response = await productos.retrieveProductos({
+			limit: 1000, // Cargar los primeros 1000 productos
+			offset: 0
+		});
+
+		if (response.ok) {
+			const data: RetrieveProductResponse[] = await response.json();
+			productList.value = data;
+		}
+	} catch (err: unknown) {
+		console.error("Error al cargar productos iniciales:", err);
+		// En caso de error, intentar cargar desde cache
+		console.log('Error en API, intentando cargar productos desde cache...');
+		const cachedProducts = getProductos();
+		if (cachedProducts.length > 0) {
+			productList.value = cachedProducts;
+		}
+	} finally {
+		loadingProduct.value = false;
+	}
+}
+
 async function onLazyLoadProducts(e: VirtualScrollerLazyEvent) {
 	if (loadingProduct.value)
 		return;
@@ -46,6 +98,48 @@ async function onLazyLoadProducts(e: VirtualScrollerLazyEvent) {
 	loadingProduct.value = true;
 
 	try {
+		// Esperar a que se complete la inicialización del cache
+		await waitForInitialization();
+		
+		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
+		if (!cacheService.needsUpdate('productos')) {
+			console.log('Cache de productos válido, usando datos en cache para lazy load...');
+			const cachedProducts = getProductos();
+			
+			// Simular paginación con los datos del cache
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedProducts.slice(startIndex, endIndex);
+			
+			const items = [...productList.value];
+			for (let i = 0; i < paginatedData.length; i++) {
+				items[startIndex + i] = paginatedData[i];
+			}
+			
+			productList.value = items;
+			return;
+		}
+
+		// Si no hay internet, usar cache aunque esté expirado
+		if (!isOnline.value) {
+			console.log('Sin conexión, cargando productos desde cache para lazy load...');
+			const cachedProducts = getProductos();
+			
+			// Simular paginación con los datos del cache
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedProducts.slice(startIndex, endIndex);
+			
+			const items = [...productList.value];
+			for (let i = 0; i < paginatedData.length; i++) {
+				items[startIndex + i] = paginatedData[i];
+			}
+			
+			productList.value = items;
+			return;
+		}
+
+		// Solo hacer llamada a API si cache está expirado y hay conexión
 		let limit = e.last - e.first;
 
 		if (limit <= 0)
@@ -63,7 +157,22 @@ async function onLazyLoadProducts(e: VirtualScrollerLazyEvent) {
 
 		productList.value = items;
 	} catch (err: unknown) {
-
+		console.error("Error al cargar productos:", err);
+		// En caso de error, intentar cargar desde cache
+		console.log('Error en API, intentando cargar productos desde cache...');
+		const cachedProducts = getProductos();
+		if (cachedProducts.length > 0) {
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedProducts.slice(startIndex, endIndex);
+			
+			const items = [...productList.value];
+			for (let i = 0; i < paginatedData.length; i++) {
+				items[startIndex + i] = paginatedData[i];
+			}
+			
+			productList.value = items;
+		}
 	} finally {
 		loadingProduct.value = false;
 	}
@@ -131,6 +240,13 @@ function onResetForm() {
 	previewDosis.value = "";
 	previewPlaga.value = "";
 }
+
+// Cargar productos cuando se abra el diálogo
+watch(visible, (newValue) => {
+	if (newValue) {
+		loadInitialProducts();
+	}
+});
 </script>
 
 <template>

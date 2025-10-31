@@ -9,6 +9,9 @@ import * as albaranes from "@/services/albaranes";
 import * as socios from "@/services/socios";
 import * as fincas from "@/services/fincas";
 import * as tecnicos from "@/services/tecnicos";
+import { useMasterDataCache } from "@/composables/useMasterDataCache";
+import { useNetworkStatus } from "@/composables/useNetworkStatus";
+import { cacheService } from "@/services/cacheService";
 import type {
 	RetrieveAlbaranResponse,
 	RetrieveFincaResponse,
@@ -48,10 +51,85 @@ const tecnicosList = ref<TecnicoOption[]>([]);
 const selectedSocioId = ref<number | null>(null);
 const selectedFincaId = ref<number | null>(null);
 
+// Cache y estado de red
+const { isOnline } = useNetworkStatus();
+const { getSocios, getFincas, getTecnicos, waitForInitialization } = useMasterDataCache();
+
+// Inicializar listas con datos del cache al montar el componente
+onMounted(() => {
+	console.log('Inicializando listas con datos del cache...');
+	
+	// Cargar socios del cache
+	const cachedSocios = getSocios();
+	if (cachedSocios.length > 0) {
+		sociosList.value = cachedSocios;
+		console.log(`Cargados ${cachedSocios.length} socios desde cache`);
+	}
+	
+	// Cargar fincas del cache
+	const cachedFincas = getFincas();
+	if (cachedFincas.length > 0) {
+		fincasList.value = cachedFincas;
+		console.log(`Cargadas ${cachedFincas.length} fincas desde cache`);
+	}
+	
+	// Cargar técnicos del cache
+	const cachedTecnicos = getTecnicos();
+	if (cachedTecnicos.length > 0) {
+		tecnicosList.value = cachedTecnicos.map(tecnico => ({
+			...tecnico,
+			fullname: `${tecnico.nombres} ${tecnico.apellidos}`
+		}));
+		console.log(`Cargados ${cachedTecnicos.length} técnicos desde cache`);
+	}
+});
+
 async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
 	loadingSocio.value = true;
 
 	try {
+		// Esperar a que se complete la inicialización del cache
+		await waitForInitialization();
+		
+		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
+		if (!cacheService.needsUpdate('socios')) {
+			console.log('Cache de socios válido, usando datos en cache para lazy load...');
+			const cachedSocios = getSocios();
+			
+			// Simular paginación con los datos del cache
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedSocios.slice(startIndex, endIndex);
+			
+			const items = [...sociosList.value];
+			for (let i = 0; i < paginatedData.length; i++) {
+				items[startIndex + i] = paginatedData[i];
+			}
+			
+			sociosList.value = items;
+			return;
+		}
+
+		// Si no hay internet, usar cache aunque esté expirado
+		if (!isOnline.value) {
+			console.log('Sin conexión, cargando socios desde cache para lazy load...');
+			const cachedSocios = getSocios();
+			
+			// Simular paginación con los datos del cache
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedSocios.slice(startIndex, endIndex);
+			
+			const items = [...sociosList.value];
+			for (let i = 0; i < paginatedData.length; i++) {
+				items[startIndex + i] = paginatedData[i];
+			}
+			
+			sociosList.value = items;
+			return;
+		}
+
+		// Solo hacer llamada a API si cache está expirado y hay conexión
 		let limit = e.last - e.first;
 
 		if (limit <= 0)
@@ -87,7 +165,22 @@ async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
 
 		sociosList.value = items;
 	} catch (err: unknown) {
-
+		console.error("Error al cargar socios:", err);
+		// En caso de error, intentar cargar desde cache
+		console.log('Error en API, intentando cargar socios desde cache...');
+		const cachedSocios = getSocios();
+		if (cachedSocios.length > 0) {
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedSocios.slice(startIndex, endIndex);
+			
+			const items = [...sociosList.value];
+			for (let i = 0; i < paginatedData.length; i++) {
+				items[startIndex + i] = paginatedData[i];
+			}
+			
+			sociosList.value = items;
+		}
 	} finally {
 		loadingSocio.value = false;
 	}
@@ -99,6 +192,23 @@ async function loadInitialSocios() {
 	
 	loadingSocio.value = true;
 	try {
+		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
+		if (!cacheService.needsUpdate('socios')) {
+			console.log('Cache de socios válido, usando datos en cache...');
+			const cachedSocios = getSocios();
+			sociosList.value = cachedSocios;
+			return;
+		}
+
+		// Si no hay internet, usar cache aunque esté expirado
+		if (!isOnline.value) {
+			console.log('Sin conexión, cargando socios desde cache...');
+			const cachedSocios = getSocios();
+			sociosList.value = cachedSocios;
+			return;
+		}
+
+		// Solo hacer llamada a API si cache está expirado y hay conexión
 		const response = await socios.retrieveSocios({
 			limit: 1000, // Cargar los primeros 1000 socios
 			offset: 0
@@ -110,6 +220,12 @@ async function loadInitialSocios() {
 		}
 	} catch (err: unknown) {
 		console.error("Error al cargar socios iniciales:", err);
+		// En caso de error, intentar cargar desde cache
+		console.log('Error en API, intentando cargar socios desde cache...');
+		const cachedSocios = getSocios();
+		if (cachedSocios.length > 0) {
+			sociosList.value = cachedSocios;
+		}
 	} finally {
 		loadingSocio.value = false;
 	}
@@ -121,6 +237,15 @@ async function loadInitialFincas() {
 	
 	loadingFinca.value = true;
 	try {
+		// Si no hay internet, usar cache
+		if (!isOnline.value) {
+			console.log('Sin conexión, cargando fincas desde cache...');
+			const cachedFincas = getFincas();
+			fincasList.value = cachedFincas;
+			return;
+		}
+
+		// Si hay internet, cargar desde API
 		const response = await fincas.retrieveFincas({
 			limit: 1000, // Cargar las primeras 1000 fincas
 			offset: 0
@@ -132,8 +257,73 @@ async function loadInitialFincas() {
 		}
 	} catch (err: unknown) {
 		console.error("Error al cargar fincas iniciales:", err);
+		// En caso de error, intentar cargar desde cache
+		console.log('Error en API, intentando cargar fincas desde cache...');
+		const cachedFincas = getFincas();
+		if (cachedFincas.length > 0) {
+			fincasList.value = cachedFincas;
+		}
 	} finally {
 		loadingFinca.value = false;
+	}
+}
+
+// Función para cargar técnicos inicialmente
+async function loadInitialTecnicos() {
+	if (tecnicosList.value.length > 0) return; // Ya están cargados
+	
+	loadingTecnico.value = true;
+	try {
+		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
+		if (!cacheService.needsUpdate('tecnicos')) {
+			console.log('Cache de técnicos válido, usando datos en cache...');
+			const cachedTecnicos = getTecnicos();
+			// Agregar fullname a los técnicos del cache
+			tecnicosList.value = cachedTecnicos.map(tecnico => ({
+				...tecnico,
+				fullname: `${tecnico.nombres} ${tecnico.apellidos}`
+			}));
+			return;
+		}
+
+		// Si no hay internet, usar cache aunque esté expirado
+		if (!isOnline.value) {
+			console.log('Sin conexión, cargando técnicos desde cache...');
+			const cachedTecnicos = getTecnicos();
+			// Agregar fullname a los técnicos del cache
+			tecnicosList.value = cachedTecnicos.map(tecnico => ({
+				...tecnico,
+				fullname: `${tecnico.nombres} ${tecnico.apellidos}`
+			}));
+			return;
+		}
+
+		// Solo hacer llamada a API si cache está expirado y hay conexión
+		const response = await tecnicos.retrieveTecnicos({
+			limit: 1000, // Cargar los primeros 1000 técnicos
+			offset: 0
+		});
+
+		if (response.ok) {
+			const data: RetrieveTecnicoResponse[] = await response.json();
+			tecnicosList.value = data.map(tecnico => ({
+				...tecnico,
+				fullname: `${tecnico.nombres} ${tecnico.apellidos}`
+			}));
+		}
+	} catch (err: unknown) {
+		console.error("Error al cargar técnicos iniciales:", err);
+		// En caso de error, intentar cargar desde cache
+		console.log('Error en API, intentando cargar técnicos desde cache...');
+		const cachedTecnicos = getTecnicos();
+		if (cachedTecnicos.length > 0) {
+			tecnicosList.value = cachedTecnicos.map(tecnico => ({
+				...tecnico,
+				fullname: `${tecnico.nombres} ${tecnico.apellidos}`
+			}));
+		}
+	} finally {
+		loadingTecnico.value = false;
 	}
 }
 
@@ -141,6 +331,48 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
 	loadingFinca.value = true;
 
 	try {
+		// Esperar a que se complete la inicialización del cache
+		await waitForInitialization();
+		
+		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
+		if (!cacheService.needsUpdate('fincas')) {
+			console.log('Cache de fincas válido, usando datos en cache para lazy load...');
+			const cachedFincas = getFincas();
+			
+			// Simular paginación con los datos del cache
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedFincas.slice(startIndex, endIndex);
+			
+			const items = [...fincasList.value];
+			for (let i = 0; i < paginatedData.length; i++) {
+				items[startIndex + i] = paginatedData[i];
+			}
+			
+			fincasList.value = items;
+			return;
+		}
+
+		// Si no hay internet, usar cache aunque esté expirado
+		if (!isOnline.value) {
+			console.log('Sin conexión, cargando fincas desde cache para lazy load...');
+			const cachedFincas = getFincas();
+			
+			// Simular paginación con los datos del cache
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedFincas.slice(startIndex, endIndex);
+			
+			const items = [...fincasList.value];
+			for (let i = 0; i < paginatedData.length; i++) {
+				items[startIndex + i] = paginatedData[i];
+			}
+			
+			fincasList.value = items;
+			return;
+		}
+
+		// Solo hacer llamada a API si cache está expirado y hay conexión
 		let limit = e.last - e.first;
 
 		if (limit <= 0)
@@ -175,7 +407,22 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
 
 		fincasList.value = items;
 	} catch (err: unknown) {
-
+		console.error("Error al cargar fincas:", err);
+		// En caso de error, intentar cargar desde cache
+		console.log('Error en API, intentando cargar fincas desde cache...');
+		const cachedFincas = getFincas();
+		if (cachedFincas.length > 0) {
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedFincas.slice(startIndex, endIndex);
+			
+			const items = [...fincasList.value];
+			for (let i = 0; i < paginatedData.length; i++) {
+				items[startIndex + i] = paginatedData[i];
+			}
+			
+			fincasList.value = items;
+		}
 	} finally {
 		loadingFinca.value = false;
 	}
@@ -188,6 +435,54 @@ async function onLazyLoadTecnicos(e: VirtualScrollerLazyEvent) {
 	loadingTecnico.value = true;
 
 	try {
+		// Esperar a que se complete la inicialización del cache
+		await waitForInitialization();
+		
+		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
+		if (!cacheService.needsUpdate('tecnicos')) {
+			console.log('Cache de técnicos válido, usando datos en cache para lazy load...');
+			const cachedTecnicos = getTecnicos();
+			
+			// Simular paginación con los datos del cache
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedTecnicos.slice(startIndex, endIndex);
+			
+			const items = [...tecnicosList.value];
+			for (let i = 0; i < paginatedData.length; i++) {
+				items[startIndex + i] = {
+					...paginatedData[i],
+					fullname: `${paginatedData[i].nombres} ${paginatedData[i].apellidos}`
+				};
+			}
+			
+			tecnicosList.value = items;
+			return;
+		}
+
+		// Si no hay internet, usar cache aunque esté expirado
+		if (!isOnline.value) {
+			console.log('Sin conexión, cargando técnicos desde cache para lazy load...');
+			const cachedTecnicos = getTecnicos();
+			
+			// Simular paginación con los datos del cache
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedTecnicos.slice(startIndex, endIndex);
+			
+			const items = [...tecnicosList.value];
+			for (let i = 0; i < paginatedData.length; i++) {
+				items[startIndex + i] = {
+					...paginatedData[i],
+					fullname: `${paginatedData[i].nombres} ${paginatedData[i].apellidos}`
+				};
+			}
+			
+			tecnicosList.value = items;
+			return;
+		}
+
+		// Solo hacer llamada a API si cache está expirado y hay conexión
 		let limit = e.last - e.first;
 
 		if (limit <= 0)
@@ -226,7 +521,25 @@ async function onLazyLoadTecnicos(e: VirtualScrollerLazyEvent) {
 
 		tecnicosList.value = items;
 	} catch (err: unknown) {
-
+		console.error("Error al cargar técnicos:", err);
+		// En caso de error, intentar cargar desde cache
+		console.log('Error en API, intentando cargar técnicos desde cache...');
+		const cachedTecnicos = getTecnicos();
+		if (cachedTecnicos.length > 0) {
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedTecnicos.slice(startIndex, endIndex);
+			
+			const items = [...tecnicosList.value];
+			for (let i = 0; i < paginatedData.length; i++) {
+				items[startIndex + i] = {
+					...paginatedData[i],
+					fullname: `${paginatedData[i].nombres} ${paginatedData[i].apellidos}`
+				};
+			}
+			
+			tecnicosList.value = items;
+		}
 	} finally {
 		loadingTecnico.value = false;
 	}
@@ -396,7 +709,8 @@ function onChangeSocioId() {
 }
 
 async function changePlaceholderNewItem() {
-	const response = await fetch(`${import.meta.env.VITE_API_HOST}/albaran-placeholder?fincaId=${props.formSlot.fincaId.value}&socioId=${props.formSlot.socioId.value}`, {
+	console.log(props.formSlot.fincaId.value, props.formSlot.socioId.value)
+	const response = await fetch(`${import.meta.env.VITE_API_HOST}/albaranes/placeholder?fincaId=${props.formSlot.fincaId.value}&socioId=${props.formSlot.socioId.value}`, {
 		method: "GET",
 		headers: {
 			Accept: "application/json"
@@ -471,24 +785,41 @@ function loadAlbaranToForm(data: RetrieveAlbaranResponse) {
 
 async function onChangeSelectFinca(e: SelectChangeEvent) {
 	try {
-		const response = await fincas.retrieveFinca(e.value);
+		// Buscar la finca en la lista ya cargada (cache)
+		const finca = fincasList.value.find(f => f.id === e.value);
+		
+		if (finca) {
+			// Usar datos directamente del cache
+			const fullSectorIds = finca.sectorIds.map((sectorId: any) => e.value.toString().padStart(4, "0") + sectorId.toString().padStart(4, "0"));
+			props.formSlot.sectorIdsPreview.value = fullSectorIds.join("-");
+			props.formSlot.fincaId.value = e.value.toString().padStart(4, "0");
+			dialogState.value.selectedFincaSectorIds = finca.sectorIds;
+			selectedFincaId.value = e.value; // Sincronizar con la variable reactiva
 
-		if (!response.ok) {
-			alert(`HTTP status: ${response.status}`);
-			return;
+			if (props.formSlot.socioId.value && props.formSlot.fincaId.value && !dialogState.value.originalValues)
+				changePlaceholderNewItem().then().catch();
+		} else {
+			// Fallback: si no está en cache, hacer consulta (solo como respaldo)
+			console.warn('Finca no encontrada en cache, haciendo consulta a API');
+			const response = await fincas.retrieveFinca(e.value);
+
+			if (!response.ok) {
+				alert(`HTTP status: ${response.status}`);
+				return;
+			}
+
+			const data: RetrieveFincaResponse = await response.json();
+			const fullSectorIds = data.sectorIds.map((sectorId: any) => e.value.toString().padStart(4, "0") + sectorId.toString().padStart(4, "0"));
+			props.formSlot.sectorIdsPreview.value = fullSectorIds.join("-");
+			props.formSlot.fincaId.value = e.value.toString().padStart(4, "0");
+			dialogState.value.selectedFincaSectorIds = data.sectorIds;
+			selectedFincaId.value = e.value;
+
+			if (props.formSlot.socioId.value && props.formSlot.fincaId.value && !dialogState.value.originalValues)
+				changePlaceholderNewItem().then().catch();
 		}
-
-		const data: RetrieveFincaResponse = await response.json();
-		const fullSectorIds = data.sectorIds.map((sectorId: any) => e.value.toString().padStart(4, "0") + sectorId.toString().padStart(4, "0"));
-		props.formSlot.sectorIdsPreview.value = fullSectorIds.join("-");
-		props.formSlot.fincaId.value = e.value.toString().padStart(4, "0");
-		dialogState.value.selectedFincaSectorIds = data.sectorIds;
-		selectedFincaId.value = e.value; // Sincronizar con la variable reactiva
-
-		if (props.formSlot.socioId.value && props.formSlot.fincaId.value && !dialogState.value.originalValues)
-			changePlaceholderNewItem().then().catch();
 	} catch (err: unknown) {
-
+		console.error('Error en onChangeSelectFinca:', err);
 	} finally {
 
 	}
@@ -533,6 +864,7 @@ function onClickCheckAll() {
 onMounted(() => {
 	loadInitialSocios();
 	loadInitialFincas();
+	loadInitialTecnicos();
 });
 </script>
 

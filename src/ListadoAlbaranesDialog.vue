@@ -10,8 +10,15 @@ import type {RetrieveAlbaranResponse, RetrieveFincaResponse, RetrieveSocioRespon
 import {Button, type VirtualScrollerLazyEvent} from "primevue";
 import * as socios from "@/services/socios.ts";
 import * as fincas from "@/services/fincas.ts";
+import { useMasterDataCache } from "@/composables/useMasterDataCache";
+import { useNetworkStatus } from "@/composables/useNetworkStatus";
+import { cacheService } from "@/services/cacheService";
 
 const visible = defineModel("visible", {type: Boolean, required: true, default: false});
+
+// Cache y network status
+const { isOnline } = useNetworkStatus();
+const { getSocios, getFincas, waitForInitialization } = useMasterDataCache();
 
 const sociosList = ref<RetrieveSocioResponse[]>([]);
 const fincasList = ref<RetrieveFincaResponse[]>([]);
@@ -117,6 +124,48 @@ async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
 	loadingSocio.value = true;
 
 	try {
+		// Esperar a que se complete la inicialización del cache
+		await waitForInitialization();
+		
+		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
+		if (!cacheService.needsUpdate('socios')) {
+			console.log('Cache de socios válido, usando datos en cache para lazy load...');
+			const cachedSocios = getSocios();
+			
+			// Simular paginación con los datos del cache
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedSocios.slice(startIndex, endIndex);
+			
+			const items = [...sociosList.value];
+			for (let i = 0; i < paginatedData.length; i++) {
+				items[startIndex + i] = paginatedData[i];
+			}
+			
+			sociosList.value = items;
+			return;
+		}
+
+		// Si no hay internet, usar cache aunque esté expirado
+		if (!isOnline.value) {
+			console.log('Sin conexión, cargando socios desde cache para lazy load...');
+			const cachedSocios = getSocios();
+			
+			// Simular paginación con los datos del cache
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedSocios.slice(startIndex, endIndex);
+			
+			const items = [...sociosList.value];
+			for (let i = 0; i < paginatedData.length; i++) {
+				items[startIndex + i] = paginatedData[i];
+			}
+			
+			sociosList.value = items;
+			return;
+		}
+
+		// Solo hacer llamada a API si cache está expirado y hay conexión
 		let limit = e.last - e.first;
 
 		if (limit <= 0)
@@ -152,7 +201,22 @@ async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
 
 		sociosList.value = items;
 	} catch (err: unknown) {
-
+		console.error("Error al cargar socios:", err);
+		// En caso de error, intentar cargar desde cache
+		console.log('Error en API, intentando cargar socios desde cache...');
+		const cachedSocios = getSocios();
+		if (cachedSocios.length > 0) {
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedSocios.slice(startIndex, endIndex);
+			
+			const items = [...sociosList.value];
+			for (let i = 0; i < paginatedData.length; i++) {
+				items[startIndex + i] = paginatedData[i];
+			}
+			
+			sociosList.value = items;
+		}
 	} finally {
 		loadingSocio.value = false;
 	}
@@ -162,6 +226,48 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
 	loadingFinca.value = true;
 
 	try {
+		// Esperar a que se complete la inicialización del cache
+		await waitForInitialization();
+		
+		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
+		if (!cacheService.needsUpdate('fincas')) {
+			console.log('Cache de fincas válido, usando datos en cache para lazy load...');
+			const cachedFincas = getFincas();
+			
+			// Simular paginación con los datos del cache
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedFincas.slice(startIndex, endIndex);
+			
+			const items = [...fincasList.value];
+			for (let i = 0; i < paginatedData.length; i++) {
+				items[startIndex + i] = paginatedData[i];
+			}
+			
+			fincasList.value = items;
+			return;
+		}
+
+		// Si no hay internet, usar cache aunque esté expirado
+		if (!isOnline.value) {
+			console.log('Sin conexión, cargando fincas desde cache para lazy load...');
+			const cachedFincas = getFincas();
+			
+			// Simular paginación con los datos del cache
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedFincas.slice(startIndex, endIndex);
+			
+			const items = [...fincasList.value];
+			for (let i = 0; i < paginatedData.length; i++) {
+				items[startIndex + i] = paginatedData[i];
+			}
+			
+			fincasList.value = items;
+			return;
+		}
+
+		// Solo hacer llamada a API si cache está expirado y hay conexión
 		let limit = e.last - e.first;
 
 		if (limit <= 0)
@@ -196,7 +302,22 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
 
 		fincasList.value = items;
 	} catch (err: unknown) {
-
+		console.error("Error al cargar fincas:", err);
+		// En caso de error, intentar cargar desde cache
+		console.log('Error en API, intentando cargar fincas desde cache...');
+		const cachedFincas = getFincas();
+		if (cachedFincas.length > 0) {
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedFincas.slice(startIndex, endIndex);
+			
+			const items = [...fincasList.value];
+			for (let i = 0; i < paginatedData.length; i++) {
+				items[startIndex + i] = paginatedData[i];
+			}
+			
+			fincasList.value = items;
+		}
 	} finally {
 		loadingFinca.value = false;
 	}
