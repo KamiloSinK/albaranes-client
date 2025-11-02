@@ -5,13 +5,20 @@
 import type {RetrieveFincasQueryParams} from "@coa/api-types";
 import { cacheService } from './cacheService';
 
+// Tipo extendido para incluir filtros adicionales del lado del cliente
+interface ExtendedRetrieveFincasQueryParams extends RetrieveFincasQueryParams {
+	search?: string;
+	socio_id?: string;
+	activo?: boolean;
+}
+
 // Función para verificar si hay conexión a internet
 function isOnline(): boolean {
 	return navigator.onLine;
 }
 
 // Función para filtrar fincas en cache según los parámetros
-function filterCachedFincas(fincas: any[], filter: RetrieveFincasQueryParams): any[] {
+function filterCachedFincas(fincas: any[], filter: ExtendedRetrieveFincasQueryParams): any[] {
 	let filtered = [...fincas];
 
 	// Aplicar filtros si están presentes
@@ -24,7 +31,7 @@ function filterCachedFincas(fincas: any[], filter: RetrieveFincasQueryParams): a
 	}
 
 	if (filter.socio_id) {
-		filtered = filtered.filter(finca => finca.socio_id === parseInt(filter.socio_id));
+		filtered = filtered.filter(finca => finca.socio_id === parseInt(filter.socio_id!));
 	}
 
 	if (filter.activo !== undefined) {
@@ -60,7 +67,7 @@ export function parseSectores(sectores: any[]): string[] {
 	}).filter(Boolean);
 }
 
-export async function retrieveFincas(filter: RetrieveFincasQueryParams) {
+export async function retrieveFincas(filter: ExtendedRetrieveFincasQueryParams) {
 	// Si no hay conexión, usar cache
 	if (!isOnline()) {
 		console.log('Sin conexión, usando fincas desde cache');

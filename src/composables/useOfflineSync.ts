@@ -160,7 +160,7 @@ export function useOfflineSync() {
   })
 
   // Sincronización periódica cuando hay conexión
-  let syncInterval: NodeJS.Timeout | null = null
+  let syncInterval: number | null = null
 
   onMounted(() => {
     // Intentar sincronizar al montar el componente si hay conexión

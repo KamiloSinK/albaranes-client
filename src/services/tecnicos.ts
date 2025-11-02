@@ -5,13 +5,19 @@
 import type {RetrieveTecnicosQueryParams} from "@coa/api-types";
 import { cacheService } from './cacheService';
 
+// Tipo extendido para incluir filtros adicionales del lado del cliente
+interface ExtendedRetrieveTecnicosQueryParams extends RetrieveTecnicosQueryParams {
+	search?: string;
+	activo?: boolean;
+}
+
 // Función para verificar si hay conexión a internet
 function isOnline(): boolean {
 	return navigator.onLine;
 }
 
 // Función para filtrar técnicos en cache según los parámetros
-function filterCachedTecnicos(tecnicos: any[], filter: RetrieveTecnicosQueryParams): any[] {
+function filterCachedTecnicos(tecnicos: any[], filter: ExtendedRetrieveTecnicosQueryParams): any[] {
 	let filtered = [...tecnicos];
 
 	// Aplicar filtros si están presentes
@@ -36,7 +42,7 @@ function filterCachedTecnicos(tecnicos: any[], filter: RetrieveTecnicosQueryPara
 	return filtered;
 }
 
-export async function retrieveTecnicos(filter: RetrieveTecnicosQueryParams) {
+export async function retrieveTecnicos(filter: ExtendedRetrieveTecnicosQueryParams) {
 	// Si no hay conexión, usar cache
 	if (!isOnline()) {
 		console.log('Sin conexión, usando técnicos desde cache');

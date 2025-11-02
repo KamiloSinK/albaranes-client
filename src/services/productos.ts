@@ -5,13 +5,19 @@
 import type {RetrieveProductsQueryParams} from "@coa/api-types";
 import { cacheService } from './cacheService';
 
+// Tipo extendido para incluir filtros adicionales del lado del cliente
+interface ExtendedRetrieveProductsQueryParams extends RetrieveProductsQueryParams {
+	search?: string;
+	activo?: boolean;
+}
+
 // Función para verificar si hay conexión a internet
 function isOnline(): boolean {
 	return navigator.onLine;
 }
 
 // Función para filtrar productos en cache según los parámetros
-function filterCachedProductos(productos: any[], filter: RetrieveProductsQueryParams): any[] {
+function filterCachedProductos(productos: any[], filter: ExtendedRetrieveProductsQueryParams): any[] {
 	let filtered = [...productos];
 
 	// Aplicar filtros si están presentes
@@ -35,7 +41,7 @@ function filterCachedProductos(productos: any[], filter: RetrieveProductsQueryPa
 	return filtered;
 }
 
-export async function retrieveProductos(filter: RetrieveProductsQueryParams) {
+export async function retrieveProductos(filter: ExtendedRetrieveProductsQueryParams) {
 	// Si no hay conexión, usar cache
 	if (!isOnline()) {
 		console.log('Sin conexión, usando productos desde cache');
