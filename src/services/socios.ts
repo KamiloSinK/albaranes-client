@@ -5,13 +5,19 @@
 import type {RetrieveSociosQueryParams} from "@coa/api-types";
 import { cacheService } from './cacheService';
 
+// Tipo extendido para incluir filtros adicionales del lado del cliente
+interface ExtendedRetrieveSociosQueryParams extends RetrieveSociosQueryParams {
+	search?: string;
+	activo?: boolean;
+}
+
 // Función para verificar si hay conexión a internet
 function isOnline(): boolean {
 	return navigator.onLine;
 }
 
 // Función para filtrar socios en cache según los parámetros
-function filterCachedSocios(socios: any[], filter: RetrieveSociosQueryParams): any[] {
+function filterCachedSocios(socios: any[], filter: ExtendedRetrieveSociosQueryParams): any[] {
 	let filtered = [...socios];
 
 	// Aplicar filtros si están presentes
@@ -36,7 +42,7 @@ function filterCachedSocios(socios: any[], filter: RetrieveSociosQueryParams): a
 	return filtered;
 }
 
-export async function retrieveSocios(filter: RetrieveSociosQueryParams) {
+export async function retrieveSocios(filter: ExtendedRetrieveSociosQueryParams) {
 	// Si no hay conexión, usar cache
 	if (!isOnline()) {
 		console.log('Sin conexión, usando socios desde cache');

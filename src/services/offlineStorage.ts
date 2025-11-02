@@ -1,4 +1,4 @@
-import type { NewAlbaranRequest } from '../../../api-types/src/index'
+import type { NewAlbaranRequest } from '../../api-types/src/index'
 
 export interface OfflineAlbaran {
   id: string // UUID temporal
