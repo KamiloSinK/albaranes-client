@@ -3,7 +3,7 @@
   -->
 
 <script lang="ts" setup>
-import {ref} from "vue";
+import {ref, onMounted} from "vue";
 import type {MenuItem} from "primevue/menuitem";
 import AlbaranDialog from "@/albaran/AlbaranDialog.vue";
 import ListadoAlbaranesDialog from "@/ListadoAlbaranesDialog.vue";
@@ -14,6 +14,7 @@ import PWAInstallPrompt from "@/components/PWAInstallPrompt.vue";
 import { usePWA } from "@/composables/usePWA";
 import { useOfflineSync } from "@/composables/useOfflineSync";
 import { useNetworkStatus } from "@/composables/useNetworkStatus";
+import { useMasterDataCache } from "@/composables/useMasterDataCache";
 
 // PWA functionality
 const { 
@@ -35,6 +36,13 @@ const {
 
 // Network status
 const { isOnline } = useNetworkStatus();
+
+// Master data cache
+const { 
+	isLoading: isCacheLoading, 
+	loadMasterData, 
+	cacheStats 
+} = useMasterDataCache();
 
 const dialogVisible = ref({
 	"AlbaranDialog": false,
@@ -102,6 +110,62 @@ if (!sessionCookie) {
 	openDialog("LoginDialog");
 }
 
+// Inicializar cache de datos maestros al montar la aplicación
+onMounted(async () => {
+	// Solo proceder si hay una sesión activa
+	if (!sessionCookie) {
+		console.log('No hay sesión activa - no se cargarán datos maestros');
+		return;
+	}
+
+	console.log('Inicializando datos maestros...');
+	console.log('Estado de conexión:', isOnline.value ? 'Conectado' : 'Sin conexión');
+	
+	// Obtener estadísticas del cache para logging
+	const stats = cacheStats.value;
+	console.log('Estadísticas del cache:', stats);
+	
+	try {
+		// loadMasterData() maneja automáticamente:
+		// - Si hay internet: verifica si el cache ha expirado y actualiza solo si es necesario
+		// - Si no hay internet: usa los datos del cache sin intentar actualizar
+		await loadMasterData();
+		
+		// Mostrar información sobre el resultado
+		const updatedStats = cacheStats.value;
+		const hasData = updatedStats.productos.count > 0 && 
+		               updatedStats.socios.count > 0 && 
+		               updatedStats.fincas.count > 0 && 
+		               updatedStats.tecnicos.count > 0 &&
+		               updatedStats.abonos.count > 0;
+		
+		if (hasData) {
+			console.log('✅ Datos maestros disponibles:', {
+				productos: updatedStats.productos.count,
+				socios: updatedStats.socios.count,
+				fincas: updatedStats.fincas.count,
+				tecnicos: updatedStats.tecnicos.count,
+				abonos: updatedStats.abonos.count
+			});
+			
+			if (isOnline.value) {
+				console.log('📡 Cache verificado y actualizado si era necesario');
+			} else {
+				console.log('💾 Usando datos del cache (sin conexión)');
+			}
+		} else {
+			if (isOnline.value) {
+				console.warn('⚠️ No se pudieron cargar los datos maestros');
+			} else {
+				console.warn('⚠️ Sin conexión y sin datos en cache');
+			}
+		}
+		
+	} catch (error) {
+		console.error('❌ Error al inicializar datos maestros:', error);
+	}
+});
+
 </script>
 
 <template>
@@ -114,6 +178,12 @@ if (!sessionCookie) {
 		<div class="status-item" :class="{ 'offline': !isOnline }">
 			<i :class="isOnline ? 'pi pi-wifi' : 'pi pi-wifi-off'"></i>
 			<span>{{ isOnline ? 'Conectado' : 'Sin conexión' }}</span>
+		</div>
+		
+		<!-- Cache loading status -->
+		<div v-if="isCacheLoading" class="status-item loading">
+			<i class="pi pi-spin pi-spinner"></i>
+			<span>Cargando datos...</span>
 		</div>
 		
 		<!-- Sync status -->
