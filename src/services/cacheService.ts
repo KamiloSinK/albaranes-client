@@ -17,7 +17,7 @@ export interface CacheStats {
 }
 
 class CacheService {
-  private readonly CACHE_DURATION = 6 * 60 * 60 * 1000 // 6 horas en milisegundos
+  private readonly CACHE_DURATION = 1 * 60 * 60 * 1000 // 1 hora en milisegundos
   private readonly VERSION = '1.0.0'
 
   // Claves para localStorage
