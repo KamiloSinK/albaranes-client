@@ -17,7 +17,7 @@ const emit = defineEmits(["addProduct"]);
 
 // Cache y estado de red
 const {isOnline} = useNetworkStatus();
-const {getProductos, waitForInitialization} = useMasterDataCache();
+const {getProductos} = useMasterDataCache();
 
 interface SelectOptions<V> {
 	label: string;
@@ -98,8 +98,7 @@ async function onLazyLoadProducts(e: VirtualScrollerLazyEvent) {
 	loadingProduct.value = true;
 
 	try {
-		// Esperar a que se complete la inicialización del cache
-		await waitForInitialization();
+    // No esperamos inicialización: usamos cache si está disponible
 		
 		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
 		if (!cacheService.needsUpdate('productos')) {

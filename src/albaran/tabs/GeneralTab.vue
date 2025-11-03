@@ -53,7 +53,7 @@ const selectedFincaId = ref<number | null>(null);
 
 // Cache y estado de red
 const { isOnline } = useNetworkStatus();
-const { getSocios, getFincas, getTecnicos, waitForInitialization } = useMasterDataCache();
+const { getSocios, getFincas, getTecnicos } = useMasterDataCache();
 
 // Inicializar listas con datos del cache al montar el componente
 onMounted(() => {
@@ -88,8 +88,7 @@ async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
 	loadingSocio.value = true;
 
 	try {
-		// Esperar a que se complete la inicialización del cache
-		await waitForInitialization();
+    // No esperamos inicialización: usamos cache si está disponible
 		
 		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
 		if (!cacheService.needsUpdate('socios')) {
@@ -331,8 +330,7 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
 	loadingFinca.value = true;
 
 	try {
-		// Esperar a que se complete la inicialización del cache
-		await waitForInitialization();
+    // No esperamos inicialización: usamos cache si está disponible
 		
 		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
 		if (!cacheService.needsUpdate('fincas')) {
@@ -435,8 +433,7 @@ async function onLazyLoadTecnicos(e: VirtualScrollerLazyEvent) {
 	loadingTecnico.value = true;
 
 	try {
-		// Esperar a que se complete la inicialización del cache
-		await waitForInitialization();
+    // No esperamos inicialización: usamos cache si está disponible
 		
 		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
 		if (!cacheService.needsUpdate('tecnicos')) {

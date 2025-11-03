@@ -18,7 +18,7 @@ const visible = defineModel("visible", {type: Boolean, required: true, default: 
 
 // Cache y network status
 const { isOnline } = useNetworkStatus();
-const { getSocios, getFincas, waitForInitialization } = useMasterDataCache();
+const { getSocios, getFincas } = useMasterDataCache();
 
 const sociosList = ref<RetrieveSocioResponse[]>([]);
 const fincasList = ref<RetrieveFincaResponse[]>([]);
@@ -124,8 +124,7 @@ async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
 	loadingSocio.value = true;
 
 	try {
-		// Esperar a que se complete la inicialización del cache
-		await waitForInitialization();
+    // No esperamos inicialización: usamos cache si está disponible
 		
 		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
 		if (!cacheService.needsUpdate('socios')) {
@@ -226,8 +225,7 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
 	loadingFinca.value = true;
 
 	try {
-		// Esperar a que se complete la inicialización del cache
-		await waitForInitialization();
+    // No esperamos inicialización: usamos cache si está disponible
 		
 		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
 		if (!cacheService.needsUpdate('fincas')) {

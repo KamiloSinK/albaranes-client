@@ -23,7 +23,7 @@ const loadingAbono = ref<boolean>(false);
 
 // Cache y estado de red
 const { isOnline } = useNetworkStatus()
-const { getAbonos, waitForInitialization } = useMasterDataCache()
+const { getAbonos } = useMasterDataCache()
 
 // Estado para los campos del formulario
 const selectedAbono = ref<RetrieveAbonoResponse | null>(null);
@@ -69,8 +69,7 @@ async function onLazyLoadAbonos(e: VirtualScrollerLazyEvent) {
 	loadingAbono.value = true;
 
 	try {
-		// Esperar a que se complete la inicialización del cache
-		await waitForInitialization();
+    // No esperamos inicialización: usamos cache si está disponible
 		
 		let limit = e.last - e.first;
 

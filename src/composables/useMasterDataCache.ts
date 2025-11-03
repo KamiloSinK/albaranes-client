@@ -322,22 +322,6 @@ export function useMasterDataCache() {
     }
   }
 
-  // Esperar a que se complete la inicialización del cache
-  const waitForInitialization = async (): Promise<void> => {
-    if (isInitialized.value) return
-    
-    return new Promise((resolve) => {
-      const checkInitialized = () => {
-        if (isInitialized.value) {
-          resolve()
-        } else {
-          setTimeout(checkInitialized, 50)
-        }
-      }
-      checkInitialized()
-    })
-  }
-
   return {
     // Estado
     isLoading,
@@ -351,7 +335,6 @@ export function useMasterDataCache() {
 
     // Métodos
     loadMasterData,
-    waitForInitialization,
     getProductos,
     getSocios,
     getFincas,
