@@ -34,9 +34,7 @@ function onSubmitForm(e: FormSubmitEvent) {
 	location.href = `${import.meta.env.VITE_API_HOST}/albaranes/cuarentena?desde=${fromDate}&hasta=${toDate}`;
 }
 
-function onHideDialog() {
-	location.reload();
-}
+function onHideDialog() {}
 </script>
 
 <template>

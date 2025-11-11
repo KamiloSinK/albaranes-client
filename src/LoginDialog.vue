@@ -5,7 +5,7 @@
 <script setup lang="ts">
 import {Form, type FormResolverOptions, type FormSubmitEvent} from "@primevue/forms";
 import {ref} from "vue";
-import type {LoginResponse} from "@coa/api-types";
+// Nota: el backend puede devolver { userId, role } además de token/userName
 
 const visible = defineModel("visible", {type: Boolean, required: true, default: false});
 const isLoading = ref<boolean>(false);
@@ -60,8 +60,20 @@ async function onSubmitForm(e: FormSubmitEvent) {
 			return;
 		}
 
-		const data: LoginResponse = await response.json();
-		visible.value = false;
+        const data: any = await response.json();
+
+        // Persistir rol en localStorage para control de permisos en la UI
+        const role = (data?.role === 'tecnico' || data?.role === 'socio') ? data.role : undefined;
+        const userId = typeof data?.userId === 'number' ? data.userId : undefined;
+        const userName = typeof data?.userName === 'string' ? data.userName : e.values.username;
+
+        const authUser = { userId, role, userName };
+        try {
+          if (role) localStorage.setItem('userRole', role);
+          localStorage.setItem('auth.user', JSON.stringify(authUser));
+        } catch {}
+
+        visible.value = false;
 	} catch (err: unknown) {
 		alert("Error al iniciar sesión\nAsegúrate de estar conectado a Internet.")
 		console.error(err);

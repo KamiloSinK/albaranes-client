@@ -20,9 +20,7 @@ function onSubmitForm(e: FormSubmitEvent) {
 
 }
 
-function onHideDialog() {
-	location.reload();
-}
+function onHideDialog() {}
 </script>
 
 <template>

@@ -142,9 +142,7 @@ async function onSubmitForm(e: FormSubmitEvent) {
 	}
 }
 
-function onHideDialog() {
-  location.reload();
-}
+function onHideDialog() {}
 
 // Cargar inicialmente un lote de opciones para que el Select funcione sin esperar scroll
 async function loadInitialSocios() {

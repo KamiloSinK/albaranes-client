@@ -39,7 +39,22 @@ const workaroundGeneralTab = ref<InstanceType<typeof GeneralTab>>();
 const workaroundNewButton = ref();
 const workaroundSaveButton = ref();
 
-const confirm = useConfirm();
+function getConfirm() {
+    try {
+        return useConfirm();
+    } catch (e) {
+        console.warn("PrimeVue Confirmation no disponible, usando confirm() nativo");
+        return {
+            require: ({ message, accept, reject }: any) => {
+                if (window.confirm(message)) {
+                    accept && accept();
+                } else {
+                    reject && reject();
+                }
+            }
+        } as any;
+    }
+}
 
 // Composable para detectar estado de conexión
 const { isOnline, checkConnection } = useNetworkStatus();
@@ -79,9 +94,7 @@ const dialogState = reactive<AlbaranDialogState>({
 
 const datosMenu = ref<InstanceType<typeof Menu>>();
 
-function onHideDialog() {
-	location.reload();
-}
+function onHideDialog() {}
 
 function onClickDatosMenu(e: Event) {
 	datosMenu.value?.toggle(e);
@@ -183,7 +196,7 @@ async function onClickDelete() {
 		return;
 	}
 
-	confirm.require({
+    getConfirm().require({
 		message: "Está a punto de borrar un albarán\nEsta acción es irreversible.",
 		header: "Nuevo albarán",
 		icon: "pi pi-info-circle",
@@ -230,7 +243,7 @@ async function onClickDelete() {
 }
 
 function onClickNew(formSlot: any) {
-	confirm.require({
+    getConfirm().require({
 		message: "Advertencia: se perderán los cambios no guardados",
 		header: "Nuevo albarán",
 		icon: "pi pi-info-circle",
@@ -634,7 +647,7 @@ function onRequestDeleteProduct(product?: ProductData) {
 		return;
 	}
 
-	confirm.require({
+    getConfirm().require({
 		message: "Está a punto de borrar un producto\nUna vez borrado, tendrá que volver a añadirlo",
 		header: "Borrar producto",
 		icon: "pi pi-info-circle",
@@ -667,7 +680,7 @@ function onRequestDeleteAbono(tank: "A" | "B", abono?: AbonoData) {
 		return;
 	}
 
-	confirm.require({
+    getConfirm().require({
 		message: "Está a punto de borrar un producto\nUna vez borrado, tendrá que volver a añadirlo",
 		header: "Borrar producto",
 		icon: "pi pi-info-circle",

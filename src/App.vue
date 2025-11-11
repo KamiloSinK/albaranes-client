@@ -9,7 +9,9 @@ import AlbaranDialog from "@/albaran/AlbaranDialog.vue";
 import ListadoAlbaranesDialog from "@/ListadoAlbaranesDialog.vue";
 import ListadoProductosPorSocioDialog from "@/ListadoProductosPorSocioDialog.vue";
 import FicheroCuarentenaDialog from "@/FicheroCuarentenaDialog.vue";
+import GestionInventarioDialog from "@/GestionInventarioDialog.vue";
 import LoginDialog from "@/LoginDialog.vue";
+import ConfirmDialog from "primevue/confirmdialog";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt.vue";
 import { usePWA } from "@/composables/usePWA";
 import { useOfflineSync } from "@/composables/useOfflineSync";
@@ -51,6 +53,7 @@ const dialogVisible = ref({
 	"ListadoAlbaranesDialog": false,
 	"ListadoProductosPorSocioDialog": false,
 	"FicheroCuarentenaDialog": false,
+	"GestionInventarioDialog": false,
 	"LoginDialog": false
 });
 
@@ -73,6 +76,10 @@ const items = ref<MenuItem[]>([
 			{
 				label: "Generar fichero de cuarentena",
 				command: () => openDialog("FicheroCuarentenaDialog")
+			},
+			{
+				label: "Gestión de inventario",
+				command: () => openDialog("GestionInventarioDialog")
 			}
 /*			{
 				label: "Listado de socios/productos",
@@ -86,23 +93,32 @@ const items = ref<MenuItem[]>([
 		command: () => showInstallDialog(),
 		visible: isInstallable.value && !isInstalled.value
 	},
-	{
-		label: "Cerrar sesión",
-		command: async () => {
-			const response = await fetch(`${import.meta.env.VITE_API_HOST}/user/logout`, {
-				method: "GET",
-				credentials: "include",
-				mode: "cors"
-			});
+  {
+    label: "Cerrar sesión",
+    command: async () => {
+      const response = await fetch(`${import.meta.env.VITE_API_HOST}/user/logout`, {
+        method: "GET",
+        credentials: "include",
+        mode: "cors"
+      });
 
-			if (!response.ok) {
-				alert("Error: no se pudo cerrar sesión");
-				return;
-			}
+      if (!response.ok) {
+        alert("Error: no se pudo cerrar sesión");
+        return;
+      }
 
-			openDialog("LoginDialog");
-		}
-	}
+      // Limpiar datos de sesión persistidos
+      try {
+        localStorage.removeItem('userRole');
+        localStorage.removeItem('role');
+        localStorage.removeItem('auth.user');
+        localStorage.removeItem('authUser');
+        localStorage.removeItem('currentUser');
+      } catch {}
+
+      openDialog("LoginDialog");
+    }
+  }
 ]);
 
 const cookies = document.cookie.split("; ");
@@ -227,11 +243,19 @@ onMounted(async () => {
 			type="button"
 			variant="outlined"
 			@click="openDialog('FicheroCuarentenaDialog')"/>
+		<Button
+			icon="pi pi-sliders-h"
+			iconPos="top"
+			label="Gestión de inventario"
+			type="button"
+			variant="outlined"
+			@click="openDialog('GestionInventarioDialog')"/>
 	</div>
 	<AlbaranDialog v-model:visible="dialogVisible['AlbaranDialog']" />
 	<ListadoAlbaranesDialog v-model:visible="dialogVisible['ListadoAlbaranesDialog']" />
 	<ListadoProductosPorSocioDialog v-model:visible="dialogVisible['ListadoProductosPorSocioDialog']" />
 	<FicheroCuarentenaDialog v-model:visible="dialogVisible['FicheroCuarentenaDialog']" />
+	<GestionInventarioDialog v-model:visible="dialogVisible['GestionInventarioDialog']" />
 	<LoginDialog v-model:visible="dialogVisible['LoginDialog']" />
 	
 	<!-- PWA Install Prompt -->
