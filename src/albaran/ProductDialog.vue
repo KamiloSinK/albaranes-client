@@ -17,7 +17,7 @@ const emit = defineEmits(["addProduct"]);
 
 // Cache y estado de red
 const {isOnline} = useNetworkStatus();
-const {getProductos} = useMasterDataCache();
+const {getProductos, getProductosLite} = useMasterDataCache();
 
 interface SelectOptions<V> {
 	label: string;
@@ -38,7 +38,8 @@ const nivelOptions = ref<SelectOptions<AlbaranNivel>[]>([
 	{label: "Baja", value: "baja"}
 ]);
 
-const productList = ref<RetrieveProductResponse[]>([]);
+type ProductoLite = { id: number; nombre: string }
+const productList = ref<ProductoLite[]>([]);
 const loadingProduct = ref<boolean>(false);
 
 const previewMateriaActiva = ref<string>("");
@@ -46,49 +47,42 @@ const previewPlazoSeguimiento = ref<string>("");
 const previewDosis = ref<string>("");
 const previewPlaga = ref<string>("");
 
-// Función para cargar productos inicialmente
+// Carga inicial rápida desde cache y refresco en segundo plano si aplica
 async function loadInitialProducts() {
-	if (productList.value.length > 0) return; // Ya están cargados
-	
-	loadingProduct.value = true;
-	try {
-		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
-		if (!cacheService.needsUpdate('productos')) {
-			console.log('Cache de productos válido, usando datos en cache...');
-			const cachedProducts = getProductos();
-			productList.value = cachedProducts;
-			return;
-		}
+    if (productList.value.length > 0) return; // Ya están cargados
 
-		// Si no hay internet, usar cache aunque esté expirado
-		if (!isOnline.value) {
-			console.log('Sin conexión, cargando productos desde cache...');
-			const cachedProducts = getProductos();
-			productList.value = cachedProducts;
-			return;
-		}
+    loadingProduct.value = true;
+    try {
+        // Siempre pintar primero desde cache para abrir el Select rápido
+        const cachedLite = getProductosLite();
+        if (cachedLite.length > 0) {
+            productList.value = cachedLite;
+        }
 
-		// Solo hacer llamada a API si cache está expirado y hay conexión
-		const response = await productos.retrieveProductos({
-			limit: 1000, // Cargar los primeros 1000 productos
-			offset: 0
-		});
+        // Si hay conexión y el cache está expirado, refrescar en background
+        if (isOnline.value && cacheService.needsUpdate('productos')) {
+            void refreshProductos();
+        }
+    } catch (err: unknown) {
+        console.error('Error al cargar productos iniciales:', err);
+    } finally {
+        loadingProduct.value = false;
+    }
+}
 
-		if (response.ok) {
-			const data: RetrieveProductResponse[] = await response.json();
-			productList.value = data;
-		}
-	} catch (err: unknown) {
-		console.error("Error al cargar productos iniciales:", err);
-		// En caso de error, intentar cargar desde cache
-		console.log('Error en API, intentando cargar productos desde cache...');
-		const cachedProducts = getProductos();
-		if (cachedProducts.length > 0) {
-			productList.value = cachedProducts;
-		}
-	} finally {
-		loadingProduct.value = false;
-	}
+async function refreshProductos() {
+    try {
+        const response = await productos.retrieveProductos({
+            limit: 1000, // lote razonable para refresco sin bloquear UI
+            offset: 0
+        });
+        if (response.ok) {
+            const data: RetrieveProductResponse[] = await response.json();
+            productList.value = data.map((p) => ({ id: p.id, nombre: p.nombre }));
+        }
+    } catch (err: unknown) {
+        console.error('Error al refrescar productos desde API:', err);
+    }
 }
 
 async function onLazyLoadProducts(e: VirtualScrollerLazyEvent) {
@@ -103,7 +97,7 @@ async function onLazyLoadProducts(e: VirtualScrollerLazyEvent) {
 		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
 		if (!cacheService.needsUpdate('productos')) {
 			console.log('Cache de productos válido, usando datos en cache para lazy load...');
-			const cachedProducts = getProductos();
+            const cachedProducts = getProductosLite();
 			
 			// Simular paginación con los datos del cache
 			const startIndex = e.first;
@@ -122,7 +116,7 @@ async function onLazyLoadProducts(e: VirtualScrollerLazyEvent) {
 		// Si no hay internet, usar cache aunque esté expirado
 		if (!isOnline.value) {
 			console.log('Sin conexión, cargando productos desde cache para lazy load...');
-			const cachedProducts = getProductos();
+            const cachedProducts = getProductosLite();
 			
 			// Simular paginación con los datos del cache
 			const startIndex = e.first;
@@ -139,27 +133,27 @@ async function onLazyLoadProducts(e: VirtualScrollerLazyEvent) {
 		}
 
 		// Solo hacer llamada a API si cache está expirado y hay conexión
-		let limit = e.last - e.first;
-
-		if (limit <= 0)
-			limit = 10000;
+    let limit = e.last - e.first;
+    // En primera carga algunos navegadores reportan 0; usar un lote pequeño
+    if (limit <= 0)
+        limit = 200;
 
 		const response = await productos.retrieveProductos({
 			limit: limit,
 			offset: e.first
 		});
 
-		const data: RetrieveProductResponse[] = await response.json();
-		const items = [...productList.value];
-		for (let i = 0; i < data.length; i++)
-			items[e.first + i] = data[i];
+        const data: RetrieveProductResponse[] = await response.json();
+        const items = [...productList.value];
+        for (let i = 0; i < data.length; i++)
+            items[e.first + i] = { id: data[i].id, nombre: data[i].nombre } as ProductoLite;
 
 		productList.value = items;
 	} catch (err: unknown) {
 		console.error("Error al cargar productos:", err);
 		// En caso de error, intentar cargar desde cache
-		console.log('Error en API, intentando cargar productos desde cache...');
-		const cachedProducts = getProductos();
+        console.log('Error en API, intentando cargar productos desde cache...');
+        const cachedProducts = getProductosLite();
 		if (cachedProducts.length > 0) {
 			const startIndex = e.first;
 			const endIndex = e.last;
@@ -203,25 +197,37 @@ function formResolver(e: FormResolverOptions): Record<string, any> {
 }
 
 async function onSelectProduct(e: SelectChangeEvent) {
-	try {
-		const selectedProduct: RetrieveProductResponse = e.value;
-		const response = await productos.retrieveProducto(selectedProduct.id);
+    try {
+        const selectedProductId: number = e.value as number;
 
-		if (!response.ok) {
-			alert(`HTTP status: ${response.status}`);
-			return;
-		}
+        // Mostrar vista previa usando el cache completo si está disponible
+        const fullCached = getProductos();
+        const cachedDetail = fullCached.find((p: any) => p.id === selectedProductId);
+        if (cachedDetail) {
+            previewMateriaActiva.value = cachedDetail.materiaActiva ?? "";
+            previewPlazoSeguimiento.value = cachedDetail.plazoSeguimiento?.toString() ?? "";
+            previewDosis.value = cachedDetail.dosis ?? "";
+            previewPlaga.value = cachedDetail.plaga ?? "";
+        }
 
-		const data: RetrieveProductResponse = await response.json();
-		previewMateriaActiva.value = data.materiaActiva;
-		previewPlazoSeguimiento.value = data.plazoSeguimiento?.toString() ?? "";
-		previewDosis.value = data.dosis;
-		previewPlaga.value = data.plaga ?? "";
-	} catch (err: unknown) {
+        // Refrescar detalle desde API si hay conexión
+        if (isOnline.value) {
+            const response = await productos.retrieveProducto(selectedProductId);
+            if (!response.ok) {
+                alert(`HTTP status: ${response.status}`);
+                return;
+            }
+            const data: RetrieveProductResponse = await response.json();
+            previewMateriaActiva.value = data.materiaActiva;
+            previewPlazoSeguimiento.value = data.plazoSeguimiento?.toString() ?? "";
+            previewDosis.value = data.dosis;
+            previewPlaga.value = data.plaga ?? "";
+        }
+    } catch (err: unknown) {
 
-	} finally {
+    } finally {
 
-	}
+    }
 }
 
 function onSubmitForm(e: FormSubmitEvent) {
@@ -305,12 +311,13 @@ watch(visible, (newValue) => {
 								showLoader: true,
 								loading: loadingProduct
 							}"
-							@change="onSelectProduct"
-							name="product"
-							optionLabel="nombre"
-							placeholder="Seleccione"
-							filter
-							class="w-full"/>
+                            @change="onSelectProduct"
+                            name="product"
+                            optionLabel="nombre"
+                            optionValue="id"
+                            placeholder="Seleccione"
+                            filter
+                            class="w-full"/>
 						<Message
 							v-if="$form.product?.invalid ?? false"
 							severity="error"

@@ -15,6 +15,8 @@ import { usePWA } from "@/composables/usePWA";
 import { useOfflineSync } from "@/composables/useOfflineSync";
 import { useNetworkStatus } from "@/composables/useNetworkStatus";
 import { useMasterDataCache } from "@/composables/useMasterDataCache";
+import { cacheService } from "@/services/cacheService";
+import { offlineStorage } from "@/services/offlineStorage";
 
 // PWA functionality
 const { 
@@ -112,14 +114,25 @@ if (!sessionCookie) {
 
 // Inicializar cache de datos maestros al montar la aplicación
 onMounted(async () => {
-	// Solo proceder si hay una sesión activa
-	if (!sessionCookie) {
-		console.log('No hay sesión activa - no se cargarán datos maestros');
-		return;
-	}
+  // Solo proceder si hay una sesión activa
+  if (!sessionCookie) {
+    console.log('No hay sesión activa - no se cargarán datos maestros');
+    return;
+  }
 
-	console.log('Inicializando datos maestros...');
-	console.log('Estado de conexión:', isOnline.value ? 'Conectado' : 'Sin conexión');
+  // Inicializar caches desde IndexedDB antes de cargar datos maestros
+  try {
+    await Promise.all([
+      cacheService.initialize(),
+      offlineStorage.initialize()
+    ])
+    console.log('IndexedDB inicializado, caches en memoria disponibles')
+  } catch (e) {
+    console.warn('No se pudo inicializar IndexedDB, continuando con flujo estándar', e)
+  }
+
+  console.log('Inicializando datos maestros...');
+  console.log('Estado de conexión:', isOnline.value ? 'Conectado' : 'Sin conexión');
 	
 	// Obtener estadísticas del cache para logging
 	const stats = cacheStats.value;

@@ -1,4 +1,5 @@
 import type { NewAlbaranRequest } from '../../api-types/src/index'
+import * as idb from './indexedDb'
 
 export interface OfflineAlbaran {
   id: string // UUID temporal
@@ -21,26 +22,56 @@ class OfflineStorageService {
   private readonly MAX_ATTEMPTS = 3
   private readonly RETRY_DELAY = 5 * 60 * 1000 // 5 minutos
 
+  // Memoria en proceso para mantener API síncrona
+  private mem: OfflineAlbaran[] = []
+  private initialized = false
+  private initPromise: Promise<void> | null = null
+
+  async initialize(): Promise<void> {
+    if (this.initialized && !this.initPromise) return
+    if (this.initPromise) return this.initPromise
+    this.initPromise = (async () => {
+      try {
+        // Leer único registro 'all' desde IndexedDB
+        const entry = await idb.get('offline_albaranes', 'all')
+        if (entry && Array.isArray(entry.data)) {
+          this.mem = entry.data as OfflineAlbaran[]
+        } else if (Array.isArray(entry)) {
+          // Compatibilidad por si se guardó como array plano
+          this.mem = entry as OfflineAlbaran[]
+        } else {
+          // Migración inicial desde localStorage si existiera
+          try {
+            const stored = localStorage.getItem(this.STORAGE_KEY)
+            const parsed = stored ? JSON.parse(stored) : []
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              this.mem = parsed as OfflineAlbaran[]
+              await idb.set('offline_albaranes', 'all', { data: this.mem, timestamp: Date.now(), version: '1.0.0' })
+              localStorage.removeItem(this.STORAGE_KEY)
+            }
+          } catch {}
+        }
+      } finally {
+        this.initialized = true
+        this.initPromise = null
+      }
+    })()
+    return this.initPromise
+  }
+
   // Obtener todos los albaranes offline
   getOfflineAlbaranes(): OfflineAlbaran[] {
-    try {
-      const stored = localStorage.getItem(this.STORAGE_KEY)
-      return stored ? JSON.parse(stored) : []
-    } catch (error) {
-      console.error('Error al leer albaranes offline:', error)
-      return []
-    }
+    return this.mem
   }
 
   // Guardar albaranes offline
   private saveOfflineAlbaranes(albaranes: OfflineAlbaran[]): void {
-    try {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(albaranes))
-    } catch (error) {
-      console.error('Error al guardar albaranes offline:', error)
-      // Si hay error de espacio, intentar limpiar albaranes antiguos
-      this.cleanupOldEntries()
-    }
+    this.mem = albaranes
+    // Persistir en IndexedDB de forma asíncrona
+    idb.set('offline_albaranes', 'all', { data: this.mem, timestamp: Date.now(), version: '1.0.0' })
+      .catch((error) => {
+        console.error('Error al guardar albaranes offline en IndexedDB:', error)
+      })
   }
 
   // Agregar un nuevo albarán offline
@@ -148,7 +179,8 @@ class OfflineStorageService {
 
   // Limpiar todo el almacenamiento offline
   clearAll(): void {
-    localStorage.removeItem(this.STORAGE_KEY)
+    this.mem = []
+    idb.clear('offline_albaranes').catch(() => {})
     console.log('Almacenamiento offline limpiado')
   }
 

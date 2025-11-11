@@ -5,7 +5,7 @@
 <script setup lang="ts">
 import * as albaranes from "@/services/albaranes";
 import {Form, type FormResolverOptions, type FormSubmitEvent} from "@primevue/forms";
-import {ref} from "vue";
+import {ref, onMounted} from "vue";
 import type {RetrieveAlbaranResponse, RetrieveFincaResponse, RetrieveSocioResponse} from "@coa/api-types";
 import {Button, type VirtualScrollerLazyEvent} from "primevue";
 import * as socios from "@/services/socios.ts";
@@ -26,6 +26,32 @@ const loadingSocio = ref<boolean>(false);
 const loadingFinca = ref<boolean>(false);
 const isLoading = ref<boolean>(false);
 const mode = ref<"preview" | "print">("preview");
+// v-model locales para mantener el comportamiento coherente con otros Select
+const selectedSocioId = ref<number | null>(null);
+const selectedFincaId = ref<number | null>(null);
+
+// Inicializar listas con datos del cache al montar el componente
+onMounted(() => {
+  const cachedSocios = getSocios();
+  if (cachedSocios.length > 0) {
+    sociosList.value = cachedSocios;
+    console.log(`Cargados ${cachedSocios.length} socios desde cache (Listado)`);
+  }
+
+  const cachedFincas = getFincas();
+  if (cachedFincas.length > 0) {
+    fincasList.value = cachedFincas;
+    console.log(`Cargadas ${cachedFincas.length} fincas desde cache (Listado)`);
+  }
+
+  // Si no hay datos aún, cargar un lote inicial para habilitar filtro inmediato
+  if (sociosList.value.length === 0) {
+    loadInitialSocios().then().catch();
+  }
+  if (fincasList.value.length === 0) {
+    loadInitialFincas().then().catch();
+  }
+});
 
 function formResolver(e: FormResolverOptions): Record<string, any> {
 	const {values} = e;
@@ -117,7 +143,56 @@ async function onSubmitForm(e: FormSubmitEvent) {
 }
 
 function onHideDialog() {
-	location.reload();
+  location.reload();
+}
+
+// Cargar inicialmente un lote de opciones para que el Select funcione sin esperar scroll
+async function loadInitialSocios() {
+  if (sociosList.value.length > 0) return;
+  loadingSocio.value = true;
+  try {
+    // Usar cache si está vigente o no hay conexión
+    if (!cacheService.needsUpdate('socios') || !isOnline.value) {
+      const cached = getSocios();
+      if (cached.length > 0) sociosList.value = cached;
+      return;
+    }
+
+    const response = await socios.retrieveSocios({ limit: 1000, offset: 0 });
+    if (response.ok) {
+      sociosList.value = await response.json();
+    }
+  } catch (err) {
+    console.error('Error al cargar socios iniciales:', err);
+    const cached = getSocios();
+    if (cached.length > 0) sociosList.value = cached;
+  } finally {
+    loadingSocio.value = false;
+  }
+}
+
+async function loadInitialFincas() {
+  if (fincasList.value.length > 0) return;
+  loadingFinca.value = true;
+  try {
+    // Usar cache si está vigente o no hay conexión
+    if (!cacheService.needsUpdate('fincas') || !isOnline.value) {
+      const cached = getFincas();
+      if (cached.length > 0) fincasList.value = cached;
+      return;
+    }
+
+    const response = await fincas.retrieveFincas({ limit: 1000, offset: 0 });
+    if (response.ok) {
+      fincasList.value = await response.json();
+    }
+  } catch (err) {
+    console.error('Error al cargar fincas iniciales:', err);
+    const cached = getFincas();
+    if (cached.length > 0) fincasList.value = cached;
+  } finally {
+    loadingFinca.value = false;
+  }
 }
 
 async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
@@ -389,24 +464,25 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
 					</div>
 				</div>
 			</Fieldset>
-			<div class="flex-1 flex flex-col gap-1">
-				<label>Socio:</label>
-				<Select
-					:options="sociosList"
-					:virtualScrollerOptions="{
-						lazy: true,
-						onLazyLoad: onLazyLoadSocios,
-						itemSize: 36,
-						showLoader: true,
-						loading: loadingSocio
-					}"
-					optionLabel="nombre"
-					optionValue="id"
-					placeholder="Seleccione"
-					name="socio"
-					filter
-					class="w-full">
-				</Select>
+      <div class="flex-1 flex flex-col gap-1">
+        <label>Socio:</label>
+        <Select
+          v-model="selectedSocioId"
+          :options="sociosList"
+          :virtualScrollerOptions="{
+            lazy: true,
+            onLazyLoad: onLazyLoadSocios,
+            itemSize: 36,
+            showLoader: true,
+            loading: loadingSocio
+          }"
+          optionLabel="nombre"
+          optionValue="id"
+          placeholder="Seleccione"
+          name="socio"
+          filter
+          class="w-full">
+        </Select>
 				<Message
 					v-if="$form.socio?.invalid ?? false"
 					severity="error"
@@ -415,24 +491,25 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
 					v-text="$form.socio.error.message">
 				</Message>
 			</div>
-			<div class="flex-1 flex flex-col gap-1">
-				<label>Finca:</label>
-				<Select
-					:options="fincasList"
-					:virtualScrollerOptions="{
-						lazy: true,
-						onLazyLoad: onLazyLoadFincas,
-						itemSize: 36,
-						showLoader: true,
-						loading: loadingFinca
-					}"
-					optionLabel="nombre"
-					optionValue="id"
-					placeholder="Seleccione"
-					name="finca"
-					filter
-					class="w-full">
-				</Select>
+      <div class="flex-1 flex flex-col gap-1">
+        <label>Finca:</label>
+        <Select
+          v-model="selectedFincaId"
+          :options="fincasList"
+          :virtualScrollerOptions="{
+            lazy: true,
+            onLazyLoad: onLazyLoadFincas,
+            itemSize: 36,
+            showLoader: true,
+            loading: loadingFinca
+          }"
+          optionLabel="nombre"
+          optionValue="id"
+          placeholder="Seleccione"
+          name="finca"
+          filter
+          class="w-full">
+        </Select>
 				<Message
 					v-if="$form.finca?.invalid ?? false"
 					severity="error"

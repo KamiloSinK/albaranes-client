@@ -49,7 +49,9 @@ export function useMasterDataCache() {
       
       if (response.ok) {
         const data = await response.json()
-        cacheService.setProductos(data)
+        // Reducir tamaño del cache: almacenar solo campos necesarios para el listado
+        const slim = (Array.isArray(data) ? data : []).map((p: any) => ({ id: p.id, nombre: p.nombre }))
+        cacheService.setProductos(slim)
         return true
       } else {
         throw new Error(`Error HTTP ${response.status}`)
@@ -272,6 +274,23 @@ export function useMasterDataCache() {
     return []
   }
 
+  // Versión ligera para selects: solo id y nombre
+  type ProductoLite = { id: number; nombre: string }
+  const productosLiteRef = ref<ProductoLite[]>([])
+
+  const getProductosLite = (): ProductoLite[] => {
+    if (productosLiteRef.value.length > 0) return productosLiteRef.value
+
+    const full = cacheService.getProductos()
+    if (full && full.length > 0) {
+      // Mapear una sola vez a formato ligero para apertura rápida del Select
+      productosLiteRef.value = full.map((p: any) => ({ id: p.id, nombre: p.nombre }))
+      return productosLiteRef.value
+    }
+    console.warn('No hay productos (lite) en cache')
+    return []
+  }
+
   const getSocios = (): any[] => {
     const cached = cacheService.getSocios()
     if (cached) return cached
@@ -336,6 +355,7 @@ export function useMasterDataCache() {
     // Métodos
     loadMasterData,
     getProductos,
+    getProductosLite,
     getSocios,
     getFincas,
     getTecnicos,
