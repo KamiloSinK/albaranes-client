@@ -113,9 +113,11 @@ export interface RetrieveAbonosQueryParams extends PaginationQueryParams {
 	}
 
 export interface RetrieveSocioResponse {
-		id: number;
-		nombre: string;
-	}
+  id: number;
+  nombre: string;
+  // Identificador de código de barras / business code
+  bc_id?: string;
+}
 
 export interface RetrieveFincaResponse {
 		id: number;

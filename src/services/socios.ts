@@ -18,17 +18,18 @@ function isOnline(): boolean {
 
 // Función para filtrar socios en cache según los parámetros
 function filterCachedSocios(socios: any[], filter: ExtendedRetrieveSociosQueryParams): any[] {
-	let filtered = [...socios];
+  let filtered = [...socios];
 
-	// Aplicar filtros si están presentes
-	if (filter.search) {
-		const searchTerm = filter.search.toLowerCase();
-		filtered = filtered.filter(socio => 
-			socio.nombre?.toLowerCase().includes(searchTerm) ||
-			socio.codigo?.toLowerCase().includes(searchTerm) ||
-			socio.dni?.toLowerCase().includes(searchTerm)
-		);
-	}
+  // Aplicar filtros si están presentes
+  if (filter.search) {
+    const searchTerm = filter.search.toLowerCase();
+    filtered = filtered.filter(socio => 
+      socio.nombre?.toLowerCase().includes(searchTerm) ||
+      socio.codigo?.toLowerCase().includes(searchTerm) ||
+      socio.dni?.toLowerCase().includes(searchTerm) ||
+      socio.bc_id?.toLowerCase().includes(searchTerm)
+    );
+  }
 
 	if (filter.activo !== undefined) {
 		filtered = filtered.filter(socio => socio.activo === filter.activo);

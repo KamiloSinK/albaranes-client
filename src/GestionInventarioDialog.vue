@@ -158,7 +158,14 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
 function onChangeSelectSocio(e: SelectChangeEvent) {
   const v = (e as any)?.value ?? null
   selectedSocioId.value = v
-  socioCodigo.value = v ? v.toString().padStart(4, '0') : ''
+  // Mostrar el bc_id del socio seleccionado en el input (fallback al id formateado)
+  if (v) {
+    const socioSel = sociosList.value.find(s => s.id === v)
+    const codigo = socioSel?.bc_id ?? v.toString().padStart(4, '0')
+    socioCodigo.value = codigo
+  } else {
+    socioCodigo.value = ''
+  }
   if (!v) {
     selectedFincaId.value = null
     fincaCodigo.value = ''
@@ -180,13 +187,16 @@ function onChangeSocioId(event: Event) {
     return
   }
 
-  const socio = sociosList.value.find(s => s.id.toString().padStart(4, '0') === codigo.padStart(4, '0'))
+  // Buscar por bc_id en lugar de id
+  const socio = sociosList.value.find(s => (s.bc_id ?? '').toString().trim().toLowerCase() === codigo.toLowerCase())
   selectedSocioId.value = socio ? socio.id : null
 }
 
 // Sincronización entre Select y Input de código (Finca)
 function onChangeSelectFinca(e: SelectChangeEvent) {
-  fincaCodigo.value = e.value?.toString().padStart(4, '0') ?? ''
+  // Mostrar bc_id si está disponible; fallback al id formateado
+  const fincaSel = fincasList.value.find(f => f.id === e.value)
+  fincaCodigo.value = fincaSel?.bc_id ?? e.value.toString().padStart(4, '0')
   selectedFincaId.value = e.value ?? null
   loadSectoresForSelection()
 }
@@ -202,7 +212,9 @@ function onChangeFincaId(event: Event) {
     return
   }
 
-  const finca = fincasList.value.find(f => f.id.toString().padStart(4, '0') === codigo.padStart(4, '0'))
+  // Buscar por bc_id primero; fallback por id formateado
+  const finca = fincasList.value.find(f => (f.bc_id ?? '').toString().trim().toLowerCase() === codigo.toLowerCase())
+    ?? fincasList.value.find(f => f.id.toString().padStart(4, '0') === codigo.padStart(4, '0'))
   selectedFincaId.value = finca ? finca.id : null
   loadSectoresForSelection()
 }
@@ -302,7 +314,6 @@ watch(readOnlyMode, (val, oldVal) => {
               name="socioId"
               id="gestion-inventario-socio-id"
               spellcheck="false"
-              inputmode="numeric"
               class="w-24"
               v-model="socioCodigo"
               @input="onChangeSocioId"
@@ -320,6 +331,7 @@ watch(readOnlyMode, (val, oldVal) => {
                 }"
                 optionLabel="nombre"
                 optionValue="id"
+                :filterFields="['nombre','bc_id']"
                 placeholder="Seleccione"
                 name="socio"
                 filter
@@ -342,7 +354,7 @@ watch(readOnlyMode, (val, oldVal) => {
               id="gestion-inventario-finca-id"
               spellcheck="false"
               class="w-24"
-              inputmode="numeric"
+              inputmode="text"
               v-model="fincaCodigo"
               @input="onChangeFincaId"
               :disabled="!selectedSocioId"
@@ -360,6 +372,7 @@ watch(readOnlyMode, (val, oldVal) => {
                 }"
                 optionLabel="nombre"
                 optionValue="id"
+                :filterFields="['nombre','bc_id']"
                 placeholder="Seleccione"
                 name="finca"
                 filter

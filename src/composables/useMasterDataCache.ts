@@ -49,8 +49,12 @@ export function useMasterDataCache() {
       
       if (response.ok) {
         const data = await response.json()
-        // Reducir tamaño del cache: almacenar solo campos necesarios para el listado
-        const slim = (Array.isArray(data) ? data : []).map((p: any) => ({ id: p.id, nombre: p.nombre }))
+        // Reducir tamaño del cache: almacenar campos necesarios para el listado e incluir bc_id normalizado
+        const slim = (Array.isArray(data) ? data : []).map((p: any) => ({
+          id: p.id,
+          nombre: p.nombre,
+          bc_id: p.bc_id ?? p.bcId ?? p.bcID ?? p.codigoBc ?? p.codigo_bc ?? undefined
+        }))
         cacheService.setProductos(slim)
         return true
       } else {
@@ -71,7 +75,11 @@ export function useMasterDataCache() {
       
       if (response.ok) {
         const data = await response.json()
-        cacheService.setSocios(data)
+        // Asegurar que bc_id (si viene del backend) se conserva en cache
+        const sociosWithBcId = Array.isArray(data)
+          ? data.map((s: any) => ({ ...s, bc_id: s.bc_id ?? s.bcId ?? s.bcID ?? s.codigoBc ?? s.codigo_bc ?? undefined }))
+          : []
+        cacheService.setSocios(sociosWithBcId)
         return true
       } else {
         throw new Error(`Error HTTP ${response.status}`)
@@ -91,7 +99,14 @@ export function useMasterDataCache() {
       
       if (response.ok) {
         const data = await response.json()
-        cacheService.setFincas(data)
+        // Asegurar que bc_id (si viene del backend) se conserva y normaliza en cache
+        const fincasWithBcId = Array.isArray(data)
+          ? data.map((f: any) => ({
+              ...f,
+              bc_id: f.bc_id ?? f.bcId ?? f.bcID ?? f.codigoBc ?? f.codigo_bc ?? undefined
+            }))
+          : []
+        cacheService.setFincas(fincasWithBcId)
         return true
       } else {
         throw new Error(`Error HTTP ${response.status}`)
@@ -274,8 +289,8 @@ export function useMasterDataCache() {
     return []
   }
 
-  // Versión ligera para selects: solo id y nombre
-  type ProductoLite = { id: number; nombre: string }
+  // Versión ligera para selects: id, nombre y bc_id (si disponible)
+  type ProductoLite = { id: number; nombre: string; bc_id?: string }
   const productosLiteRef = ref<ProductoLite[]>([])
 
   const getProductosLite = (): ProductoLite[] => {
@@ -284,7 +299,7 @@ export function useMasterDataCache() {
     const full = cacheService.getProductos()
     if (full && full.length > 0) {
       // Mapear una sola vez a formato ligero para apertura rápida del Select
-      productosLiteRef.value = full.map((p: any) => ({ id: p.id, nombre: p.nombre }))
+      productosLiteRef.value = full.map((p: any) => ({ id: p.id, nombre: p.nombre, bc_id: p.bc_id }))
       return productosLiteRef.value
     }
     console.warn('No hay productos (lite) en cache')

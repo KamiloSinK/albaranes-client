@@ -80,13 +80,39 @@ class CacheService {
           try {
             const entry: CacheEntry<any[]> | undefined = await idb.get(this.STORES[type], 'all')
             if (entry && Array.isArray(entry.data)) {
+              // Carga desde IndexedDB: datos grandes permanecen fuera de localStorage
               this.mem[type] = entry.data
               this.setMeta(type, entry)
-              // Limpiar claves antiguas pesadas en localStorage
+              // Limpieza defensiva de claves antiguas pesadas en localStorage
               try { localStorage.removeItem(this.OLD_KEYS[type]) } catch {}
+            } else {
+              // Migración desde claves antiguas en localStorage si existen
+              const rawLegacy = localStorage.getItem(this.OLD_KEYS[type])
+              if (rawLegacy) {
+                try {
+                  const parsed = JSON.parse(rawLegacy)
+                  const legacyData = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.data) ? parsed.data : [])
+                  if (legacyData && legacyData.length > 0) {
+                    const newEntry: CacheEntry<any[]> = {
+                      data: legacyData,
+                      timestamp: Date.now(),
+                      version: this.VERSION
+                    }
+                    await idb.set(this.STORES[type], 'all', newEntry)
+                    this.mem[type] = legacyData
+                    this.setMeta(type, newEntry)
+                    console.log(`Migrado cache legacy de ${String(type)} desde localStorage a IndexedDB: ${legacyData.length} elementos`)
+                  }
+                } catch (mErr) {
+                  console.warn(`No se pudo migrar cache legacy de ${String(type)} desde localStorage`, mErr)
+                } finally {
+                  // Retirar siempre la clave antigua para evitar payloads grandes en localStorage
+                  try { localStorage.removeItem(this.OLD_KEYS[type]) } catch {}
+                }
+              }
             }
           } catch (e) {
-            console.warn(`No se pudo cargar cache IndexedDB para ${type}`, e)
+            console.warn(`No se pudo cargar/migrar cache para ${type}`, e)
           }
         }
       } finally {

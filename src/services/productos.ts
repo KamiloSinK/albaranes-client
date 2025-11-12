@@ -25,7 +25,8 @@ function filterCachedProductos(productos: any[], filter: ExtendedRetrieveProduct
 		const searchTerm = filter.search.toLowerCase();
 		filtered = filtered.filter(producto => 
 			producto.nombre?.toLowerCase().includes(searchTerm) ||
-			producto.codigo?.toLowerCase().includes(searchTerm)
+			producto.codigo?.toLowerCase().includes(searchTerm) ||
+			producto.bc_id?.toLowerCase?.().includes(searchTerm)
 		);
 	}
 

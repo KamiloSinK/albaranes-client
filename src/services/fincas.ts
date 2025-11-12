@@ -19,16 +19,17 @@ function isOnline(): boolean {
 
 // Función para filtrar fincas en cache según los parámetros
 function filterCachedFincas(fincas: any[], filter: ExtendedRetrieveFincasQueryParams): any[] {
-	let filtered = [...fincas];
+    let filtered = [...fincas];
 
-	// Aplicar filtros si están presentes
-	if (filter.search) {
-		const searchTerm = filter.search.toLowerCase();
-		filtered = filtered.filter(finca => 
-			finca.nombre?.toLowerCase().includes(searchTerm) ||
-			finca.codigo?.toLowerCase().includes(searchTerm)
-		);
-	}
+    // Aplicar filtros si están presentes
+    if (filter.search) {
+        const searchTerm = filter.search.toLowerCase();
+        filtered = filtered.filter(finca => 
+            finca.nombre?.toLowerCase().includes(searchTerm) ||
+            finca.codigo?.toLowerCase().includes(searchTerm) ||
+            finca.bc_id?.toLowerCase?.().includes(searchTerm)
+        );
+    }
 
 	if (filter.socio_id) {
 		filtered = filtered.filter(finca => finca.socio_id === parseInt(filter.socio_id!));

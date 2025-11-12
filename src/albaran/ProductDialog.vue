@@ -38,7 +38,7 @@ const nivelOptions = ref<SelectOptions<AlbaranNivel>[]>([
 	{label: "Baja", value: "baja"}
 ]);
 
-type ProductoLite = { id: number; nombre: string }
+type ProductoLite = { id: number; nombre: string; bc_id?: string }
 const productList = ref<ProductoLite[]>([]);
 const loadingProduct = ref<boolean>(false);
 
@@ -78,7 +78,7 @@ async function refreshProductos() {
         });
         if (response.ok) {
             const data: RetrieveProductResponse[] = await response.json();
-            productList.value = data.map((p) => ({ id: p.id, nombre: p.nombre }));
+            productList.value = data.map((p) => ({ id: p.id, nombre: p.nombre, bc_id: (p as any)?.bc_id ?? (p as any)?.bcId ?? (p as any)?.bcID ?? (p as any)?.codigoBc ?? (p as any)?.codigo_bc }));
         }
     } catch (err: unknown) {
         console.error('Error al refrescar productos desde API:', err);
@@ -146,7 +146,7 @@ async function onLazyLoadProducts(e: VirtualScrollerLazyEvent) {
         const data: RetrieveProductResponse[] = await response.json();
         const items = [...productList.value];
         for (let i = 0; i < data.length; i++)
-            items[e.first + i] = { id: data[i].id, nombre: data[i].nombre } as ProductoLite;
+            items[e.first + i] = { id: data[i].id, nombre: data[i].nombre, bc_id: (data[i] as any)?.bc_id ?? (data[i] as any)?.bcId ?? (data[i] as any)?.bcID ?? (data[i] as any)?.codigoBc ?? (data[i] as any)?.codigo_bc } as ProductoLite;
 
 		productList.value = items;
 	} catch (err: unknown) {
@@ -315,6 +315,7 @@ watch(visible, (newValue) => {
                             name="product"
                             optionLabel="nombre"
                             optionValue="id"
+                            :filterFields="['nombre','bc_id']"
                             placeholder="Seleccione"
                             filter
                             class="w-full"/>

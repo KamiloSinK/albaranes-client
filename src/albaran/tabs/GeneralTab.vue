@@ -665,8 +665,10 @@ async function onClickFind() {
 }
 
 function onChangeSelectSocio(e: SelectChangeEvent) {
-	props.formSlot.socioId.value = e.value.toString().padStart(4, "0");
-	selectedSocioId.value = e.value;
+    // Al seleccionar, mostrar el bc_id en el input (fallback al id formateado)
+    selectedSocioId.value = e.value;
+    const socioSel = sociosList.value.find(s => s.id === e.value);
+    props.formSlot.socioId.value = socioSel?.bc_id ?? e.value.toString().padStart(4, "0");
 
 	if (props.formSlot.socioId.value && props.formSlot.fincaId.value && !dialogState.value.originalValues)
 		changePlaceholderNewItem().then().catch();
@@ -674,7 +676,7 @@ function onChangeSelectSocio(e: SelectChangeEvent) {
 
 // Función optimizada para buscar socio por código (solo en lista ya cargada)
 function onChangeSocioId() {
-	const codigo = props.formSlot.socioId.value;
+    const codigo = props.formSlot.socioId.value;
 	
 	// Limpiar selección si el input está vacío
 	if (!codigo || codigo.length === 0) {
@@ -688,17 +690,17 @@ function onChangeSocioId() {
 		return;
 	}
 
-	// Buscar el socio en la lista ya cargada por su ID (código)
-	const socioEncontrado = sociosList.value.find(socio => 
-		socio.id.toString().padStart(4, "0") === codigo.padStart(4, "0")
-	);
+    // Buscar el socio por su bc_id en la lista ya cargada
+    const socioEncontrado = sociosList.value.find(socio => 
+        (socio.bc_id ?? '').toString().trim().toLowerCase() === codigo.toLowerCase()
+    );
 
 	if (socioEncontrado) {
 		selectedSocioId.value = socioEncontrado.id;
 		
 		// Actualizar placeholder si es necesario
-		if (props.formSlot.fincaId.value && !dialogState.value.originalValues)
-			changePlaceholderNewItem().then().catch();
+        if (props.formSlot.fincaId.value && !dialogState.value.originalValues)
+            changePlaceholderNewItem().then().catch();
 	} else {
 		// Si no se encuentra en la lista ya cargada, limpiar selección
 		selectedSocioId.value = null;
@@ -706,15 +708,15 @@ function onChangeSocioId() {
 }
 
 async function changePlaceholderNewItem() {
-	console.log(props.formSlot.fincaId.value, props.formSlot.socioId.value)
-	const response = await fetch(`${import.meta.env.VITE_API_HOST}/albaranes/placeholder?fincaId=${props.formSlot.fincaId.value}&socioId=${props.formSlot.socioId.value}`, {
-		method: "GET",
-		headers: {
-			Accept: "application/json"
-		},
-		mode: "cors",
-		credentials: "include"
-	});
+    console.log(selectedFincaId.value, selectedSocioId.value)
+    const response = await fetch(`${import.meta.env.VITE_API_HOST}/albaranes/placeholder?fincaId=${selectedFincaId.value}&socioId=${selectedSocioId.value}`, {
+        method: "GET",
+        headers: {
+            Accept: "application/json"
+        },
+        mode: "cors",
+        credentials: "include"
+    });
 
 	const data = await response.json();
 	myPlaceholder.value = data.placeholder;
@@ -730,7 +732,9 @@ function loadAlbaranToForm(data: RetrieveAlbaranResponse) {
 
 	props.formSlot.socioId.value = data.general.socioId.toString().padStart(4, "0");
 	selectedSocioId.value = data.general.socioId; // Sincronizar el Select con el código cargado
-	props.formSlot.fincaId.value = data.general.fincaId.toString().padStart(4, "0");
+	// Mostrar bc_id si existe en cache; fallback al id formateado
+	const fincaSel = fincasList.value.find(f => f.id === data.general.fincaId);
+	props.formSlot.fincaId.value = fincaSel?.bc_id ?? data.general.fincaId.toString().padStart(4, "0");
 	selectedFincaId.value = data.general.fincaId; // Sincronizar el Select de finca con el código cargado
 	props.formSlot.sectorIds.value = data.general.sectoresActivados;
 	props.formSlot.tecnico.value = data.general.tecnicoId;
@@ -789,7 +793,7 @@ async function onChangeSelectFinca(e: SelectChangeEvent) {
 			// Usar datos directamente del cache
 			const fullSectorIds = finca.sectorIds.map((sectorId: any) => e.value.toString().padStart(4, "0") + sectorId.toString().padStart(4, "0"));
 			props.formSlot.sectorIdsPreview.value = fullSectorIds.join("-");
-			props.formSlot.fincaId.value = e.value.toString().padStart(4, "0");
+			props.formSlot.fincaId.value = finca.bc_id ?? e.value.toString().padStart(4, "0");
 			dialogState.value.selectedFincaSectorIds = finca.sectorIds;
 			selectedFincaId.value = e.value; // Sincronizar con la variable reactiva
 
@@ -824,30 +828,33 @@ async function onChangeSelectFinca(e: SelectChangeEvent) {
 
 // Función para buscar finca por ID y actualizar el Select
 function onChangeFincaId(event: Event) {
-	const target = event.target as HTMLInputElement;
-	const fincaId = target.value.trim();
-	
-	// Solo buscar si se han ingresado al menos 3 caracteres
-	if (fincaId.length < 3) {
-		selectedFincaId.value = null;
-		return;
-	}
-	
-	// Buscar la finca en la lista ya cargada
-	const finca = fincasList.value.find(f => f.id.toString().padStart(4, "0") === fincaId.padStart(4, "0"));
-	
-	if (finca) {
-		selectedFincaId.value = finca.id;
-		// Actualizar los sectores y otros campos relacionados
-		const fullSectorIds = finca.sectorIds.map((sectorId: any) => finca.id.toString().padStart(4, "0") + sectorId.toString().padStart(4, "0"));
-		props.formSlot.sectorIdsPreview.value = fullSectorIds.join("-");
-		dialogState.value.selectedFincaSectorIds = finca.sectorIds;
-		
-		if (props.formSlot.socioId.value && props.formSlot.fincaId.value && !dialogState.value.originalValues)
-			changePlaceholderNewItem().then().catch();
-	} else {
-		selectedFincaId.value = null;
-	}
+    const target = event.target as HTMLInputElement;
+    const codigo = target.value.trim();
+    
+    // Solo buscar si se han ingresado al menos 3 caracteres
+    if (codigo.length < 3) {
+        selectedFincaId.value = null;
+        return;
+    }
+    
+    // Buscar por bc_id; fallback por id formateado
+    const finca = fincasList.value.find(f =>
+        (f.bc_id ?? '').toString().trim().toLowerCase() === codigo.toLowerCase() ||
+        f.id.toString().padStart(4, "0") === codigo.padStart(4, "0")
+    );
+    
+    if (finca) {
+        selectedFincaId.value = finca.id;
+        // Actualizar los sectores y otros campos relacionados
+        const fullSectorIds = finca.sectorIds.map((sectorId: any) => finca.id.toString().padStart(4, "0") + sectorId.toString().padStart(4, "0"));
+        props.formSlot.sectorIdsPreview.value = fullSectorIds.join("-");
+        dialogState.value.selectedFincaSectorIds = finca.sectorIds;
+        
+        if (props.formSlot.socioId.value && props.formSlot.fincaId.value && !dialogState.value.originalValues)
+            changePlaceholderNewItem().then().catch();
+    } else {
+        selectedFincaId.value = null;
+    }
 }
 
 function onClickCheckAll() {
@@ -899,24 +906,25 @@ onMounted(() => {
 				:disabled="dialogState.originalValues !== null"
 				@input="onChangeSocioId"/>
 			<div class="flex-1 flex flex-col gap-1">
-				<Select
-					v-model="selectedSocioId"
-					:options="sociosList"
-					:disabled="dialogState.originalValues !== null"
-					:virtualScrollerOptions="{
-						lazy: true,
-						onLazyLoad: onLazyLoadSocios,
-						itemSize: 36,
-						showLoader: true,
-						loading: loadingSocio
-					}"
-					@change="onChangeSelectSocio"
-					optionLabel="nombre"
-					optionValue="id"
-					:placeholder="dialogState.originalValues !== null ? workaroundSelectSocio : 'Seleccione'"
-					filter
-					class="w-full">
-				</Select>
+                <Select
+                    v-model="selectedSocioId"
+                    :options="sociosList"
+                    :disabled="dialogState.originalValues !== null"
+                    :virtualScrollerOptions="{
+                        lazy: true,
+                        onLazyLoad: onLazyLoadSocios,
+                        itemSize: 36,
+                        showLoader: true,
+                        loading: loadingSocio
+                    }"
+                    @change="onChangeSelectSocio"
+                    optionLabel="nombre"
+                    optionValue="id"
+                    :filterFields="['nombre','bc_id']"
+                    :placeholder="dialogState.originalValues !== null ? workaroundSelectSocio : 'Seleccione'"
+                    filter
+                    class="w-full">
+                </Select>
 				<Message
 					v-if="props.formSlot.socioId?.invalid ?? false"
 					severity="error"
@@ -933,7 +941,7 @@ onMounted(() => {
 				id="albaran-finca-id"
 				spellcheck="false"
 				class="w-17 mr-2"
-				inputmode="numeric"
+				inputmode="text"
 				:disabled="dialogState.originalValues !== null"
 				@input="onChangeFincaId"/>
 			<div class="flex-1 flex flex-col gap-1">
@@ -951,6 +959,7 @@ onMounted(() => {
 					@change="onChangeSelectFinca"
 					optionLabel="nombre"
 					optionValue="id"
+					:filterFields="['nombre','bc_id']"
 					:placeholder="dialogState.originalValues !== null ? workaroundSelectFinca : 'Seleccione'"
 					filter
 					class="w-full">
@@ -981,9 +990,9 @@ onMounted(() => {
 				<template v-for="(sectorId, index) in dialogState.selectedFincaSectorIds" :key="index">
 					<div class="flex items-center gap-2">
 						<Checkbox :inputId="`albaran-sector-${index}`" :value="sectorId"/>
-						<label
-							:for="`albaran-sector-${index}`"
-							v-text="formSlot.fincaId.value.padStart(4, '0') + sectorId.toString().padStart(4, '0')"></label>
+					<label
+						:for="`albaran-sector-${index}`"
+						v-text="(selectedFincaId ?? 0).toString().padStart(4, '0') + sectorId.toString().padStart(4, '0')"></label>
 					</div>
 				</template>
 			</CheckboxGroup>

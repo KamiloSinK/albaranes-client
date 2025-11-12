@@ -476,6 +476,7 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
           }"
           optionLabel="nombre"
           optionValue="id"
+          :filterFields="['nombre','bc_id']"
           placeholder="Seleccione"
           name="socio"
           filter
@@ -503,6 +504,7 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
           }"
           optionLabel="nombre"
           optionValue="id"
+          :filterFields="['nombre','bc_id']"
           placeholder="Seleccione"
           name="finca"
           filter
