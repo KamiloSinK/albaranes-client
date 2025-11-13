@@ -193,81 +193,36 @@ async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
 	loadingSocio.value = true;
 
 	try {
-    // No esperamos inicialización: usamos cache si está disponible
-		
-		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
-		if (!cacheService.needsUpdate('socios')) {
-			console.log('Cache de socios válido, usando datos en cache para lazy load...');
-			const cachedSocios = getSocios();
-			
-			// Simular paginación con los datos del cache
-			const startIndex = e.first;
-			const endIndex = e.last;
-			const paginatedData = cachedSocios.slice(startIndex, endIndex);
-			
-			const items = [...sociosList.value];
-			for (let i = 0; i < paginatedData.length; i++) {
-				items[startIndex + i] = paginatedData[i];
-			}
-			
-			sociosList.value = items;
-			return;
-		}
-
-		// Si no hay internet, usar cache aunque esté expirado
-		if (!isOnline.value) {
-			console.log('Sin conexión, cargando socios desde cache para lazy load...');
-			const cachedSocios = getSocios();
-			
-			// Simular paginación con los datos del cache
-			const startIndex = e.first;
-			const endIndex = e.last;
-			const paginatedData = cachedSocios.slice(startIndex, endIndex);
-			
-			const items = [...sociosList.value];
-			for (let i = 0; i < paginatedData.length; i++) {
-				items[startIndex + i] = paginatedData[i];
-			}
-			
-			sociosList.value = items;
-			return;
-		}
-
-		// Solo hacer llamada a API si cache está expirado y hay conexión
+    // API-first: consultar siempre la API si hay conexión; fallback a caché
 		let limit = e.last - e.first;
+		if (limit <= 0) limit = 200;
 
-		if (limit <= 0)
-			limit = 10000;
-
-		const response = await socios.retrieveSocios({
-			limit: limit,
-			offset: e.first
-		});
-
-		if (!response.ok) {
-			switch (response.status) {
-				case 404:
-					alert("No se encuentra los socios");
-					break;
-				case 401:
-					alert("No has iniciado sesión");
-					break;
-				default:
-					alert("Error HTTP 500\n");
-					console.error("HTTP error 500");
-					console.error(await response.json());
-					break;
-			}
+		if (!isOnline.value) {
+			const cachedSocios = getSocios();
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedSocios.slice(startIndex, endIndex);
+			const items = [...sociosList.value];
+			for (let i = 0; i < paginatedData.length; i++) items[startIndex + i] = paginatedData[i];
+			sociosList.value = items;
 			return;
 		}
 
-		const data: RetrieveSocioResponse[] = await response.json();
-
-		const items = [...sociosList.value];
-		for (let i = 0; i < data.length; i++)
-			items[e.first + i] = data[i];
-
-		sociosList.value = items;
+		const response = await socios.retrieveSocios({ limit, offset: e.first });
+		if (response.ok) {
+			const data: RetrieveSocioResponse[] = await response.json();
+			const items = [...sociosList.value];
+			for (let i = 0; i < data.length; i++) items[e.first + i] = data[i];
+			sociosList.value = items;
+		} else {
+			const cachedSocios = getSocios();
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedSocios.slice(startIndex, endIndex);
+			const items = [...sociosList.value];
+			for (let i = 0; i < paginatedData.length; i++) items[startIndex + i] = paginatedData[i];
+			sociosList.value = items;
+		}
 	} catch (err: unknown) {
 		console.error("Error al cargar socios:", err);
 		// En caso de error, intentar cargar desde cache
@@ -294,80 +249,36 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
 	loadingFinca.value = true;
 
 	try {
-    // No esperamos inicialización: usamos cache si está disponible
-		
-		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
-		if (!cacheService.needsUpdate('fincas')) {
-			console.log('Cache de fincas válido, usando datos en cache para lazy load...');
-			const cachedFincas = getFincas();
-			
-			// Simular paginación con los datos del cache
-			const startIndex = e.first;
-			const endIndex = e.last;
-			const paginatedData = cachedFincas.slice(startIndex, endIndex);
-			
-			const items = [...fincasList.value];
-			for (let i = 0; i < paginatedData.length; i++) {
-				items[startIndex + i] = paginatedData[i];
-			}
-			
-			fincasList.value = items;
-			return;
-		}
-
-		// Si no hay internet, usar cache aunque esté expirado
-		if (!isOnline.value) {
-			console.log('Sin conexión, cargando fincas desde cache para lazy load...');
-			const cachedFincas = getFincas();
-			
-			// Simular paginación con los datos del cache
-			const startIndex = e.first;
-			const endIndex = e.last;
-			const paginatedData = cachedFincas.slice(startIndex, endIndex);
-			
-			const items = [...fincasList.value];
-			for (let i = 0; i < paginatedData.length; i++) {
-				items[startIndex + i] = paginatedData[i];
-			}
-			
-			fincasList.value = items;
-			return;
-		}
-
-		// Solo hacer llamada a API si cache está expirado y hay conexión
+    // API-first: consultar siempre la API si hay conexión; fallback a caché
 		let limit = e.last - e.first;
+		if (limit <= 0) limit = 200;
 
-		if (limit <= 0)
-			limit = 10000;
-
-		const response = await fincas.retrieveFincas({
-			limit: limit,
-			offset: e.first
-		});
-
-		if (!response.ok) {
-			switch (response.status) {
-				case 404:
-					alert("No se encuentra las fincas");
-					break;
-				case 401:
-					alert("No has iniciado sesión");
-					break;
-				default:
-					alert("Error HTTP 500\n");
-					console.error("HTTP error 500");
-					console.error(await response.json());
-					break;
-			}
+		if (!isOnline.value) {
+			const cachedFincas = getFincas();
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedFincas.slice(startIndex, endIndex);
+			const items = [...fincasList.value];
+			for (let i = 0; i < paginatedData.length; i++) items[startIndex + i] = paginatedData[i];
+			fincasList.value = items;
 			return;
 		}
 
-		const data: RetrieveFincaResponse[] = await response.json();
-		const items = [...fincasList.value];
-		for (let i = 0; i < data.length; i++)
-			items[e.first + i] = data[i];
-
-		fincasList.value = items;
+		const response = await fincas.retrieveFincas({ limit, offset: e.first });
+		if (response.ok) {
+			const data: RetrieveFincaResponse[] = await response.json();
+			const items = [...fincasList.value];
+			for (let i = 0; i < data.length; i++) items[e.first + i] = data[i];
+			fincasList.value = items;
+		} else {
+			const cachedFincas = getFincas();
+			const startIndex = e.first;
+			const endIndex = e.last;
+			const paginatedData = cachedFincas.slice(startIndex, endIndex);
+			const items = [...fincasList.value];
+			for (let i = 0; i < paginatedData.length; i++) items[startIndex + i] = paginatedData[i];
+			fincasList.value = items;
+		}
 	} catch (err: unknown) {
 		console.error("Error al cargar fincas:", err);
 		// En caso de error, intentar cargar desde cache

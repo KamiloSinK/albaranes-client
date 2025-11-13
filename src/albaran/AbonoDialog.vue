@@ -101,64 +101,36 @@ async function onLazyLoadAbonos(e: VirtualScrollerLazyEvent) {
 	loadingAbono.value = true;
 
 	try {
-    // No esperamos inicialización: usamos cache si está disponible
-		
+    // API-first: consultar siempre la API si hay conexión; fallback a caché
 		let limit = e.last - e.first;
+		if (limit <= 0) limit = 200;
 
-		if (limit <= 0)
-			limit = 10000;
-
-		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
-		if (!cacheService.needsUpdate('abonos')) {
-			console.log('Cache de abonos válido, usando datos en cache para lazy load...');
-			const cachedAbonos = getAbonos()
-			
-			// Simular paginación con datos del cache
-			const startIndex = e.first
-			const endIndex = Math.min(e.first + limit, cachedAbonos.length)
-			const paginatedData = cachedAbonos.slice(startIndex, endIndex)
-			
-			const items = [...abonoList.value]
-			for (let i = 0; i < paginatedData.length; i++) {
-				items[e.first + i] = paginatedData[i]
-			}
-			
-			abonoList.value = items
-			return
-		}
-
-		// Si estamos offline, usar datos del cache aunque esté expirado
 		if (!isOnline.value) {
-			console.log('Offline: Cargando abonos desde cache')
-			const cachedAbonos = getAbonos()
-			
-			// Simular paginación con datos del cache
-			const startIndex = e.first
-			const endIndex = Math.min(e.first + limit, cachedAbonos.length)
-			const paginatedData = cachedAbonos.slice(startIndex, endIndex)
-			
-			const items = [...abonoList.value]
-			for (let i = 0; i < paginatedData.length; i++) {
-				items[e.first + i] = paginatedData[i]
-			}
-			
-			abonoList.value = items
-			return
+			const cachedAbonos = getAbonos();
+			const startIndex = e.first;
+			const endIndex = Math.min(e.first + limit, cachedAbonos.length);
+			const paginatedData = cachedAbonos.slice(startIndex, endIndex);
+			const items = [...abonoList.value];
+			for (let i = 0; i < paginatedData.length; i++) items[e.first + i] = paginatedData[i];
+			abonoList.value = items;
+			return;
 		}
 
-		// Solo hacer llamada a API si cache está expirado y hay conexión
-		const response = await abonos.retrieveAbonos({
-			limit: limit,
-			offset: e.first
-		});
-
-		const data: RetrieveAbonoResponse[] = await response.json();
-
-		const items = [...abonoList.value];
-		for (let i = 0; i < data.length; i++)
-			items[e.first + i] = data[i];
-
-		abonoList.value = items;
+		const response = await abonos.retrieveAbonos({ limit, offset: e.first });
+		if (response.ok) {
+			const data: RetrieveAbonoResponse[] = await response.json();
+			const items = [...abonoList.value];
+			for (let i = 0; i < data.length; i++) items[e.first + i] = data[i];
+			abonoList.value = items;
+		} else {
+			const cachedAbonos = getAbonos();
+			const startIndex = e.first;
+			const endIndex = Math.min(e.first + limit, cachedAbonos.length);
+			const paginatedData = cachedAbonos.slice(startIndex, endIndex);
+			const items = [...abonoList.value];
+			for (let i = 0; i < paginatedData.length; i++) items[e.first + i] = paginatedData[i];
+			abonoList.value = items;
+		}
 	} catch (err: unknown) {
 		console.error('Error cargando abonos:', err)
 		
@@ -168,7 +140,7 @@ async function onLazyLoadAbonos(e: VirtualScrollerLazyEvent) {
 		
 		if (cachedAbonos.length > 0) {
 			let limit = e.last - e.first;
-			if (limit <= 0) limit = 10000;
+			if (limit <= 0) limit = 200;
 			
 			const startIndex = e.first
 			const endIndex = Math.min(e.first + limit, cachedAbonos.length)

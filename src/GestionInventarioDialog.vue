@@ -156,13 +156,36 @@ async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
   if (loadingSocio.value) return
   loadingSocio.value = true
   try {
-    const cached = getSocios()
-    const start = e.first
-    const end = e.last
-    const slice = cached.slice(start, end)
-    const items = [...sociosList.value]
-    for (let i = 0; i < slice.length; i++) items[start + i] = slice[i]
-    sociosList.value = items
+    // API-first: consultar API si hay conexión, fallback a cache
+    let limit = e.last - e.first
+    if (limit <= 0) limit = 200
+
+    if (!isOnline.value) {
+      const cached = getSocios()
+      const start = e.first
+      const end = e.last
+      const slice = cached.slice(start, end)
+      const items = [...sociosList.value]
+      for (let i = 0; i < slice.length; i++) items[start + i] = slice[i]
+      sociosList.value = items
+      return
+    }
+
+    const response = await socios.retrieveSocios({ limit, offset: e.first })
+    if (response.ok) {
+      const data: RetrieveSocioResponse[] = await response.json()
+      const items = [...sociosList.value]
+      for (let i = 0; i < data.length; i++) items[e.first + i] = data[i]
+      sociosList.value = items
+    } else {
+      const cached = getSocios()
+      const start = e.first
+      const end = e.last
+      const slice = cached.slice(start, end)
+      const items = [...sociosList.value]
+      for (let i = 0; i < slice.length; i++) items[start + i] = slice[i]
+      sociosList.value = items
+    }
   } finally {
     loadingSocio.value = false
   }
@@ -172,13 +195,36 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
   if (loadingFinca.value) return
   loadingFinca.value = true
   try {
-    const cached = getFincas()
-    const start = e.first
-    const end = e.last
-    const slice = cached.slice(start, end)
-    const items = [...fincasList.value]
-    for (let i = 0; i < slice.length; i++) items[start + i] = slice[i]
-    fincasList.value = items
+    // API-first: consultar API si hay conexión, fallback a cache
+    let limit = e.last - e.first
+    if (limit <= 0) limit = 200
+
+    if (!isOnline.value) {
+      const cached = getFincas()
+      const start = e.first
+      const end = e.last
+      const slice = cached.slice(start, end)
+      const items = [...fincasList.value]
+      for (let i = 0; i < slice.length; i++) items[start + i] = slice[i]
+      fincasList.value = items
+      return
+    }
+
+    const response = await fincas.retrieveFincas({ limit, offset: e.first })
+    if (response.ok) {
+      const data: RetrieveFincaResponse[] = await response.json()
+      const items = [...fincasList.value]
+      for (let i = 0; i < data.length; i++) items[e.first + i] = data[i]
+      fincasList.value = items
+    } else {
+      const cached = getFincas()
+      const start = e.first
+      const end = e.last
+      const slice = cached.slice(start, end)
+      const items = [...fincasList.value]
+      for (let i = 0; i < slice.length; i++) items[start + i] = slice[i]
+      fincasList.value = items
+    }
   } finally {
     loadingFinca.value = false
   }
@@ -208,18 +254,23 @@ function onChangeSocioId(event: Event) {
   const target = event.target as HTMLInputElement
   const codigo = target.value.trim()
   socioCodigo.value = codigo
-
-  if (codigo.length < 3) {
+  // Permitir coincidencias desde 1 carácter; limpiar sólo si está vacío
+  if (codigo.length === 0) {
     selectedSocioId.value = null
-    // Al no haber socio, inhabilitar y limpiar finca
     selectedFincaId.value = null
     fincaCodigo.value = ''
     return
   }
 
-  // Buscar por bc_id en lugar de id
-  const socio = sociosList.value.find(s => (s.bc_id ?? '').toString().trim().toLowerCase() === codigo.toLowerCase())
+  // Buscar primera coincidencia parcial por bc_id; fallback por id con padding
+  const term = codigo.toLowerCase()
+  const socio = sociosList.value.find(s => {
+    const bc = (s.bc_id ?? '').toString().trim().toLowerCase()
+    const idPad = s.id.toString().padStart(4, '0').toLowerCase()
+    return bc.includes(term) || idPad.includes(term)
+  })
   selectedSocioId.value = socio ? socio.id : null
+  // No sobrescribir lo que el usuario está escribiendo
 }
 
 // Sincronización entre Select y Input de código (Finca)
@@ -236,16 +287,21 @@ function onChangeFincaId(event: Event) {
   const codigo = target.value.trim()
   fincaCodigo.value = codigo
 
-  if (codigo.length < 3) {
+  if (codigo.length === 0) {
     selectedFincaId.value = null
     pendingUpdates.value = []
     return
   }
 
-  // Buscar por bc_id primero; fallback por id formateado
-  const finca = fincasList.value.find(f => (f.bc_id ?? '').toString().trim().toLowerCase() === codigo.toLowerCase())
-    ?? fincasList.value.find(f => f.id.toString().padStart(4, '0') === codigo.padStart(4, '0'))
+  // Buscar primera coincidencia parcial por bc_id; fallback por id con padding
+  const term = codigo.toLowerCase()
+  const finca = fincasList.value.find(f => {
+    const bc = (f.bc_id ?? '').toString().trim().toLowerCase()
+    const idPad = f.id.toString().padStart(4, '0').toLowerCase()
+    return bc.includes(term) || idPad.includes(term)
+  })
   selectedFincaId.value = finca ? finca.id : null
+  // No sobrescribir lo que el usuario está escribiendo
   loadSectoresForSelection()
 }
 
@@ -419,7 +475,7 @@ watch(readOnlyMode, (val, oldVal) => {
           <ToggleSwitch v-model="editMode" :disabled="currentRole !== 'socio'" :pt="{
             slider: (options) => {
               if (options.context.disabled) {
-                return 'bg-white!';
+                return 'bg-black/5! outline-[2px]! outline-gray-400!';
               } else if (options.context.checked) {
                 return 'bg-primary/10! outline! outline-primary!';
               } else if (!options.context.checked) {
@@ -428,7 +484,7 @@ watch(readOnlyMode, (val, oldVal) => {
             },
             handle: (options) => {
               if (options.context.disabled) {
-                return 'bg-primary!';
+                return 'bg-gray-400!';
               } else if (options.context.checked) {
                 return 'bg-primary!';
               } else if (!options.context.checked) {
