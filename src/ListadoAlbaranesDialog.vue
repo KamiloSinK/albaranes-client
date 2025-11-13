@@ -149,16 +149,14 @@ async function loadInitialSocios() {
   if (sociosList.value.length > 0) return;
   loadingSocio.value = true;
   try {
-    // Usar cache si está vigente o no hay conexión
-    if (!cacheService.needsUpdate('socios') || !isOnline.value) {
-      const cached = getSocios();
-      if (cached.length > 0) sociosList.value = cached;
-      return;
-    }
+    // Pintar rápido desde caché si existe
+    const cached = getSocios();
+    if (cached.length > 0) sociosList.value = cached;
 
-    const response = await socios.retrieveSocios({ limit: 1000, offset: 0 });
-    if (response.ok) {
-      sociosList.value = await response.json();
+    // Con conexión, consultar API siempre
+    if (isOnline.value) {
+      const response = await socios.retrieveSocios({ limit: 1000, offset: 0 });
+      if (response.ok) sociosList.value = await response.json();
     }
   } catch (err) {
     console.error('Error al cargar socios iniciales:', err);
@@ -173,16 +171,14 @@ async function loadInitialFincas() {
   if (fincasList.value.length > 0) return;
   loadingFinca.value = true;
   try {
-    // Usar cache si está vigente o no hay conexión
-    if (!cacheService.needsUpdate('fincas') || !isOnline.value) {
-      const cached = getFincas();
-      if (cached.length > 0) fincasList.value = cached;
-      return;
-    }
+    // Pintar rápido desde caché si existe
+    const cached = getFincas();
+    if (cached.length > 0) fincasList.value = cached;
 
-    const response = await fincas.retrieveFincas({ limit: 1000, offset: 0 });
-    if (response.ok) {
-      fincasList.value = await response.json();
+    // Con conexión, consultar API siempre
+    if (isOnline.value) {
+      const response = await fincas.retrieveFincas({ limit: 1000, offset: 0 });
+      if (response.ok) fincasList.value = await response.json();
     }
   } catch (err) {
     console.error('Error al cargar fincas iniciales:', err);

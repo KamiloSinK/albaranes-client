@@ -35,6 +35,8 @@ let keydownListener: ((event: KeyboardEvent) => void) | null = null;
 // Controlar el ciclo de vida del evento Enter basado en la visibilidad del diálogo
 watch(visible, (newValue) => {
 	if (newValue) {
+		// Cargar abonos al abrir el diálogo (API primero si hay conexión)
+		loadInitialAbonos().then().catch(() => {});
 		// Diálogo se abre - agregar event listener
 		if (keydownListener) {
 			document.removeEventListener('keydown', keydownListener);
@@ -61,6 +63,36 @@ watch(visible, (newValue) => {
 		clearForm();
 	}
 });
+
+// Carga inicial de abonos para que el Select tenga opciones sin esperar al scroll
+async function loadInitialAbonos() {
+  if (abonoList.value.length > 0) return;
+  loadingAbono.value = true;
+  try {
+    // Pintar rápido desde caché si existe
+    const cached = getAbonos();
+    if (Array.isArray(cached) && cached.length > 0) {
+      abonoList.value = cached;
+    }
+
+    // Con conexión, consultar API siempre (API-first)
+    if (isOnline.value) {
+      const response = await abonos.retrieveAbonos({ limit: 1000 });
+      if (response.ok) {
+        const data = await response.json();
+        abonoList.value = Array.isArray(data) ? data : [];
+      }
+    }
+  } catch (err) {
+    console.error('Error al cargar abonos iniciales:', err);
+    const cached = getAbonos();
+    if (Array.isArray(cached) && cached.length > 0) {
+      abonoList.value = cached;
+    }
+  } finally {
+    loadingAbono.value = false;
+  }
+}
 
 async function onLazyLoadAbonos(e: VirtualScrollerLazyEvent) {
 	if (loadingAbono.value)

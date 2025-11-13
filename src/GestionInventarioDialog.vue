@@ -68,7 +68,31 @@ async function onSubmitForm(e: FormSubmitEvent) {
   }
 }
 
-function onHideDialog() {}
+function resetAll() {
+  // Limpiar selects y códigos
+  selectedSocioId.value = null
+  selectedFincaId.value = null
+  socioCodigo.value = ''
+  fincaCodigo.value = ''
+
+  // Vaciar listas y tabla
+  sociosList.value = []
+  fincasList.value = []
+  sectoresRows.value = []
+  sectoresOriginalRows.value = []
+  pendingUpdates.value = []
+
+  // Reset de flags de carga y modo
+  loadingSocio.value = false
+  loadingFinca.value = false
+  loadingSectores.value = false
+  readOnlyMode.value = true
+}
+
+function onHideDialog() {
+  // Al cerrar el diálogo, limpiar todo
+  resetAll()
+}
 
 function detectRoleFromLocalStorage(): UserRole | null {
   try {
@@ -80,7 +104,7 @@ function detectRoleFromLocalStorage(): UserRole | null {
       const r = parsed?.role
       if (r === 'tecnico' || r === 'socio') return r
     }
-  } catch {}
+  } catch { }
   return null
 }
 
@@ -89,10 +113,13 @@ async function loadInitialSocios() {
   if (sociosList.value.length > 0) return
   loadingSocio.value = true
   try {
+    // Pintar rápido desde caché si existe
     const cached = getSocios()
     if (cached.length > 0) {
       sociosList.value = cached
-    } else if (isOnline.value) {
+    }
+    // Con conexión, consultar API siempre
+    if (isOnline.value) {
       const response = await socios.retrieveSocios({ limit: 1000, offset: 0 })
       if (response.ok) sociosList.value = await response.json()
     }
@@ -107,10 +134,13 @@ async function loadInitialFincas() {
   if (fincasList.value.length > 0) return
   loadingFinca.value = true
   try {
+    // Pintar rápido desde caché si existe
     const cached = getFincas()
     if (cached.length > 0) {
       fincasList.value = cached
-    } else if (isOnline.value) {
+    }
+    // Con conexión, consultar API siempre
+    if (isOnline.value) {
       const response = await fincas.retrieveFincas({ limit: 1000, offset: 0 })
       if (response.ok) fincasList.value = await response.json()
     }
@@ -275,6 +305,8 @@ onMounted(() => {
   if (currentRole.value === 'tecnico') {
     readOnlyMode.value = true
   }
+  // Al abrir por primera vez, garantizar estado limpio
+  resetAll()
   loadInitialSocios()
   loadInitialFincas()
 })
@@ -295,98 +327,45 @@ watch(readOnlyMode, (val, oldVal) => {
 </script>
 
 <template>
-  <Dialog
-    header="Gestión de inventario"
-    modal
-    v-model:visible="visible"
-    :style="{ width: '70rem' }"
-    :breakpoints="{ '1000px': '95vw' }"
-    appendTo="body"
-    @hide="onHideDialog"
-  >
+  <Dialog header="Gestión de inventario" modal v-model:visible="visible" :style="{ width: '70rem' }"
+    :breakpoints="{ '1000px': '95vw' }" appendTo="body" @hide="onHideDialog">
     <Form v-slot="$form" :resolver="formResolver" @submit="onSubmitForm" autocomplete="off" class="p-2">
-  <div class="w-full flex flex-row gap-4">
+      <div class="w-full flex flex-row gap-4">
         <!-- Columna izquierda: filtros y acciones rápidas -->
         <div class="flex flex-col gap-4 w-80 min-w-0">
           <div class="flex items-center gap-2 min-w-0">
             <label class="w-20 text-end font-semibold pr-2" for="gestion-inventario-socio-id">Socio:</label>
-            <InputText
-              name="socioId"
-              id="gestion-inventario-socio-id"
-              spellcheck="false"
-              class="w-24"
-              v-model="socioCodigo"
-              @input="onChangeSocioId"
-            />
+            <InputText name="socioId" id="gestion-inventario-socio-id" spellcheck="false" class="w-24"
+              v-model="socioCodigo" @input="onChangeSocioId" />
             <div class="flex-1 flex flex-col gap-1 min-w-0">
-              <Select
-                v-model="selectedSocioId"
-                :options="sociosList"
-                :virtualScrollerOptions="{
-                  lazy: true,
-                  onLazyLoad: onLazyLoadSocios,
-                  itemSize: 36,
-                  showLoader: true,
-                  loading: loadingSocio
-                }"
-                optionLabel="nombre"
-                optionValue="id"
-                :filterFields="['nombre','bc_id']"
-                placeholder="Seleccione"
-                name="socio"
-                filter
-                class="w-full max-w-full"
-                @change="onChangeSelectSocio"
-              ></Select>
-              <Message
-                v-if="$form.socio?.invalid ?? false"
-                severity="error"
-                size="small"
-                variant="simple"
-                v-text="$form.socio.error.message"
-              ></Message>
+              <Select v-model="selectedSocioId" :options="sociosList" :virtualScrollerOptions="{
+                lazy: true,
+                onLazyLoad: onLazyLoadSocios,
+                itemSize: 36,
+                showLoader: true,
+                loading: loadingSocio
+              }" optionLabel="nombre" optionValue="id" :filterFields="['nombre', 'bc_id']" placeholder="Seleccione"
+                name="socio" filter class="w-full max-w-full" @change="onChangeSelectSocio"></Select>
+              <Message v-if="$form.socio?.invalid ?? false" severity="error" size="small" variant="simple"
+                v-text="$form.socio.error.message"></Message>
             </div>
           </div>
           <div class="flex items-center gap-2 min-w-0">
             <label class="w-20 text-end font-semibold pr-2" for="gestion-inventario-finca-id">Finca:</label>
-            <InputText
-              name="fincaId"
-              id="gestion-inventario-finca-id"
-              spellcheck="false"
-              class="w-24"
-              inputmode="text"
-              v-model="fincaCodigo"
-              @input="onChangeFincaId"
-              :disabled="!selectedSocioId"
-            />
+            <InputText name="fincaId" id="gestion-inventario-finca-id" spellcheck="false" class="w-24" inputmode="text"
+              v-model="fincaCodigo" @input="onChangeFincaId" :disabled="!selectedSocioId" />
             <div class="flex-1 flex flex-col gap-1 min-w-0">
-              <Select
-                v-model="selectedFincaId"
-                :options="fincasList"
-                :virtualScrollerOptions="{
-                  lazy: true,
-                  onLazyLoad: onLazyLoadFincas,
-                  itemSize: 36,
-                  showLoader: true,
-                  loading: loadingFinca
-                }"
-                optionLabel="nombre"
-                optionValue="id"
-                :filterFields="['nombre','bc_id']"
-                placeholder="Seleccione"
-                name="finca"
-                filter
-                class="w-full max-w-full"
-                @change="onChangeSelectFinca"
-                :disabled="!selectedSocioId"
-              ></Select>
-              <Message
-                v-if="$form.finca?.invalid ?? false"
-                severity="error"
-                size="small"
-                variant="simple"
-                v-text="$form.finca.error.message"
-              ></Message>
+              <Select v-model="selectedFincaId" :options="fincasList" :virtualScrollerOptions="{
+                lazy: true,
+                onLazyLoad: onLazyLoadFincas,
+                itemSize: 36,
+                showLoader: true,
+                loading: loadingFinca
+              }" optionLabel="nombre" optionValue="id" :filterFields="['nombre', 'bc_id']" placeholder="Seleccione"
+                name="finca" filter class="w-full max-w-full" @change="onChangeSelectFinca"
+                :disabled="!selectedSocioId"></Select>
+              <Message v-if="$form.finca?.invalid ?? false" severity="error" size="small" variant="simple"
+                v-text="$form.finca.error.message"></Message>
             </div>
           </div>
         </div>
@@ -401,12 +380,29 @@ watch(readOnlyMode, (val, oldVal) => {
               <Column header="Estado">
                 <template #body="{ data }">
                   <div class="flex items-center gap-2">
-                    <InputSwitch
-                      :disabled="readOnlyMode || currentRole !== 'socio'"
-                      v-model="data.sinInventario"
-                      @change="(e) => onToggleSectorEstado(data, e?.value ?? data.sinInventario)"
-                    />
-                    <span class="text-sm">{{ (data.sinInventario === undefined) ? '—' : (data.sinInventario ? 'Pendiente' : 'Realizado') }}</span>
+                    <span class="text-sm pr-2" :class="data.sinInventario ? 'text-red-500' : 'text-green-500'">{{ (data.sinInventario === undefined) ? '—' : (data.sinInventario ?
+                      'Pendiente' : 'Realizado') }}</span>
+                      <ToggleSwitch :disabled="readOnlyMode || currentRole !== 'socio'" :modelValue="!data.sinInventario"
+                        :pt="{
+                          slider: (options) => {
+                            if (options.context.disabled) {
+                              return 'bg-black/5! outline-[2px]! outline-gray-400!';
+                            } else if (options.context.checked) {
+                              return 'bg-green-600/10! outline! outline-green-600!';
+                            } else if (!options.context.checked) {
+                              return 'bg-red-500/10! outline! outline-red-500!';
+                            }
+                          },
+                          handle: (options) => {
+                            if (options.context.disabled) {
+                              return 'bg-gray-400!';
+                            } else if (options.context.checked) {
+                              return 'bg-green-600!';
+                            } else if (!options.context.checked) {
+                              return 'bg-red-500/80!';
+                            }
+                          }
+                        }" @update:modelValue="(val) => onToggleSectorEstado(data, !val)" />
                   </div>
                 </template>
               </Column>
@@ -416,15 +412,34 @@ watch(readOnlyMode, (val, oldVal) => {
       </div>
 
       <div class="flex items-center justify-between py-4">
-        <Button icon="pi pi-save" label="Grabar" iconPos="left" type="submit" variant="outlined" :disabled="currentRole !== 'socio' || readOnlyMode || pendingUpdates.length === 0" />
+        <Button icon="pi pi-save" label="Grabar" iconPos="left" type="submit" variant="outlined"
+          :disabled="currentRole !== 'socio' || readOnlyMode || pendingUpdates.length === 0" />
         <div class="flex items-center gap-2">
-          <span>{{ editMode ? 'Modo Edición' : 'Modo Lectura' }}</span>
-          <InputSwitch v-model="editMode" :disabled="currentRole !== 'socio'" />
+          <span :class="{ 'text-primary': editMode }">{{ editMode ? 'Modo Edición' : 'Modo Lectura' }}</span>
+          <ToggleSwitch v-model="editMode" :disabled="currentRole !== 'socio'" :pt="{
+            slider: (options) => {
+              if (options.context.disabled) {
+                return 'bg-white!';
+              } else if (options.context.checked) {
+                return 'bg-primary/10! outline! outline-primary!';
+              } else if (!options.context.checked) {
+                return 'bg-white! outline! outline-black!';
+              }
+            },
+            handle: (options) => {
+              if (options.context.disabled) {
+                return 'bg-primary!';
+              } else if (options.context.checked) {
+                return 'bg-primary!';
+              } else if (!options.context.checked) {
+                return 'bg-black/80!';
+              }
+            }
+          }" />
         </div>
       </div>
     </Form>
   </Dialog>
 </template>
 
-<style scoped>
-</style>
+<style scoped></style>

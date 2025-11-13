@@ -187,47 +187,34 @@ async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
 
 // Función para cargar socios inicialmente
 async function loadInitialSocios() {
-	if (sociosList.value.length > 0) return; // Ya están cargados
-	
-	loadingSocio.value = true;
-	try {
-		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
-		if (!cacheService.needsUpdate('socios')) {
-			console.log('Cache de socios válido, usando datos en cache...');
-			const cachedSocios = getSocios();
-			sociosList.value = cachedSocios;
-			return;
-		}
+    if (sociosList.value.length > 0) return; // Ya están cargados
+    loadingSocio.value = true;
+    try {
+        // Pintar rápido desde caché si existe
+        const cachedSocios = getSocios();
+        if (cachedSocios.length > 0) {
+            sociosList.value = cachedSocios;
+        }
 
-		// Si no hay internet, usar cache aunque esté expirado
-		if (!isOnline.value) {
-			console.log('Sin conexión, cargando socios desde cache...');
-			const cachedSocios = getSocios();
-			sociosList.value = cachedSocios;
-			return;
-		}
-
-		// Solo hacer llamada a API si cache está expirado y hay conexión
-		const response = await socios.retrieveSocios({
-			limit: 1000, // Cargar los primeros 1000 socios
-			offset: 0
-		});
-
-		if (response.ok) {
-			const data: RetrieveSocioResponse[] = await response.json();
-			sociosList.value = data;
-		}
-	} catch (err: unknown) {
-		console.error("Error al cargar socios iniciales:", err);
-		// En caso de error, intentar cargar desde cache
-		console.log('Error en API, intentando cargar socios desde cache...');
-		const cachedSocios = getSocios();
-		if (cachedSocios.length > 0) {
-			sociosList.value = cachedSocios;
-		}
-	} finally {
-		loadingSocio.value = false;
-	}
+        // Con conexión, consultar API siempre
+        if (isOnline.value) {
+            const response = await socios.retrieveSocios({ limit: 1000, offset: 0 });
+            if (response.ok) {
+                const data: RetrieveSocioResponse[] = await response.json();
+                sociosList.value = data;
+            }
+            return;
+        }
+        // Sin conexión, mantener cache
+    } catch (err: unknown) {
+        console.error("Error al cargar socios iniciales:", err);
+        const fallback = getSocios();
+        if (fallback.length > 0) {
+            sociosList.value = fallback;
+        }
+    } finally {
+        loadingSocio.value = false;
+    }
 }
 
 // Función para cargar fincas inicialmente
@@ -269,61 +256,43 @@ async function loadInitialFincas() {
 
 // Función para cargar técnicos inicialmente
 async function loadInitialTecnicos() {
-	if (tecnicosList.value.length > 0) return; // Ya están cargados
-	
-	loadingTecnico.value = true;
-	try {
-		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
-		if (!cacheService.needsUpdate('tecnicos')) {
-			console.log('Cache de técnicos válido, usando datos en cache...');
-			const cachedTecnicos = getTecnicos();
-			// Agregar fullname a los técnicos del cache
-			tecnicosList.value = cachedTecnicos.map(tecnico => ({
-				...tecnico,
-				fullname: `${tecnico.nombres} ${tecnico.apellidos}`
-			}));
-			return;
-		}
+    if (tecnicosList.value.length > 0) return; // Ya están cargados
+    loadingTecnico.value = true;
+    try {
+        // Pintar rápido desde caché si existe
+        const cachedTecnicos = getTecnicos();
+        if (cachedTecnicos.length > 0) {
+            tecnicosList.value = cachedTecnicos.map(tecnico => ({
+                ...tecnico,
+                fullname: `${tecnico.nombres} ${tecnico.apellidos}`
+            }));
+        }
 
-		// Si no hay internet, usar cache aunque esté expirado
-		if (!isOnline.value) {
-			console.log('Sin conexión, cargando técnicos desde cache...');
-			const cachedTecnicos = getTecnicos();
-			// Agregar fullname a los técnicos del cache
-			tecnicosList.value = cachedTecnicos.map(tecnico => ({
-				...tecnico,
-				fullname: `${tecnico.nombres} ${tecnico.apellidos}`
-			}));
-			return;
-		}
-
-		// Solo hacer llamada a API si cache está expirado y hay conexión
-		const response = await tecnicos.retrieveTecnicos({
-			limit: 1000, // Cargar los primeros 1000 técnicos
-			offset: 0
-		});
-
-		if (response.ok) {
-			const data: RetrieveTecnicoResponse[] = await response.json();
-			tecnicosList.value = data.map(tecnico => ({
-				...tecnico,
-				fullname: `${tecnico.nombres} ${tecnico.apellidos}`
-			}));
-		}
-	} catch (err: unknown) {
-		console.error("Error al cargar técnicos iniciales:", err);
-		// En caso de error, intentar cargar desde cache
-		console.log('Error en API, intentando cargar técnicos desde cache...');
-		const cachedTecnicos = getTecnicos();
-		if (cachedTecnicos.length > 0) {
-			tecnicosList.value = cachedTecnicos.map(tecnico => ({
-				...tecnico,
-				fullname: `${tecnico.nombres} ${tecnico.apellidos}`
-			}));
-		}
-	} finally {
-		loadingTecnico.value = false;
-	}
+        // Con conexión, consultar API siempre
+        if (isOnline.value) {
+            const response = await tecnicos.retrieveTecnicos({ limit: 1000, offset: 0 });
+            if (response.ok) {
+                const data: RetrieveTecnicoResponse[] = await response.json();
+                tecnicosList.value = data.map(tecnico => ({
+                    ...tecnico,
+                    fullname: `${tecnico.nombres} ${tecnico.apellidos}`
+                }));
+            }
+            return;
+        }
+        // Sin conexión, mantener cache
+    } catch (err: unknown) {
+        console.error("Error al cargar técnicos iniciales:", err);
+        const fallbackTec = getTecnicos();
+        if (fallbackTec.length > 0) {
+            tecnicosList.value = fallbackTec.map(tecnico => ({
+                ...tecnico,
+                fullname: `${tecnico.nombres} ${tecnico.apellidos}`
+            }));
+        }
+    } finally {
+        loadingTecnico.value = false;
+    }
 }
 
 async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {

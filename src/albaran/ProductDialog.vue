@@ -59,8 +59,8 @@ async function loadInitialProducts() {
             productList.value = cachedLite;
         }
 
-        // Si hay conexión y el cache está expirado, refrescar en background
-        if (isOnline.value && cacheService.needsUpdate('productos')) {
+        // Si hay conexión, refrescar siempre en background
+        if (isOnline.value) {
             void refreshProductos();
         }
     } catch (err: unknown) {
@@ -92,47 +92,26 @@ async function onLazyLoadProducts(e: VirtualScrollerLazyEvent) {
 	loadingProduct.value = true;
 
 	try {
-    // No esperamos inicialización: usamos cache si está disponible
-		
-		// Primero verificar si hay datos válidos en cache (respeta las 6 horas)
-		if (!cacheService.needsUpdate('productos')) {
-			console.log('Cache de productos válido, usando datos en cache para lazy load...');
+    // Si no hay internet, usar cache
+        if (!isOnline.value) {
+            console.log('Sin conexión, cargando productos desde cache para lazy load...');
             const cachedProducts = getProductosLite();
-			
-			// Simular paginación con los datos del cache
-			const startIndex = e.first;
-			const endIndex = e.last;
-			const paginatedData = cachedProducts.slice(startIndex, endIndex);
-			
-			const items = [...productList.value];
-			for (let i = 0; i < paginatedData.length; i++) {
-				items[startIndex + i] = paginatedData[i];
-			}
-			
-			productList.value = items;
-			return;
-		}
+            
+            // Simular paginación con los datos del cache
+            const startIndex = e.first;
+            const endIndex = e.last;
+            const paginatedData = cachedProducts.slice(startIndex, endIndex);
+            
+            const items = [...productList.value];
+            for (let i = 0; i < paginatedData.length; i++) {
+                items[startIndex + i] = paginatedData[i];
+            }
+            
+            productList.value = items;
+            return;
+        }
 
-		// Si no hay internet, usar cache aunque esté expirado
-		if (!isOnline.value) {
-			console.log('Sin conexión, cargando productos desde cache para lazy load...');
-            const cachedProducts = getProductosLite();
-			
-			// Simular paginación con los datos del cache
-			const startIndex = e.first;
-			const endIndex = e.last;
-			const paginatedData = cachedProducts.slice(startIndex, endIndex);
-			
-			const items = [...productList.value];
-			for (let i = 0; i < paginatedData.length; i++) {
-				items[startIndex + i] = paginatedData[i];
-			}
-			
-			productList.value = items;
-			return;
-		}
-
-		// Solo hacer llamada a API si cache está expirado y hay conexión
+        // Con conexión, consultar siempre a la API
     let limit = e.last - e.first;
     // En primera carga algunos navegadores reportan 0; usar un lote pequeño
     if (limit <= 0)
