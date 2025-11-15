@@ -43,9 +43,10 @@ const { isOnline } = useNetworkStatus();
 
 // Master data cache
 const { 
-	isLoading: isCacheLoading, 
-	loadMasterData, 
-	cacheStats 
+    isLoading: isCacheLoading, 
+    loadMasterData, 
+    cacheStats,
+    clearCache
 } = useMasterDataCache();
 
 const dialogVisible = ref({
@@ -114,6 +115,11 @@ const items = ref<MenuItem[]>([
         localStorage.removeItem('auth.user');
         localStorage.removeItem('authUser');
         localStorage.removeItem('currentUser');
+        // Limpiar caches de datos maestros y almacenamiento offline
+        try {
+          clearCache();
+          offlineStorage.clearAll();
+        } catch {}
       } catch {}
 
       openDialog("LoginDialog");
@@ -130,13 +136,7 @@ if (!sessionCookie) {
 
 // Inicializar cache de datos maestros al montar la aplicación
 onMounted(async () => {
-  // Solo proceder si hay una sesión activa
-  if (!sessionCookie) {
-    console.log('No hay sesión activa - no se cargarán datos maestros');
-    return;
-  }
-
-  // Inicializar caches desde IndexedDB antes de cargar datos maestros
+  // Inicializar caches desde IndexedDB SIEMPRE, incluso sin sesión, para permitir lectura offline
   try {
     await Promise.all([
       cacheService.initialize(),
@@ -147,53 +147,81 @@ onMounted(async () => {
     console.warn('No se pudo inicializar IndexedDB, continuando con flujo estándar', e)
   }
 
-  console.log('Inicializando datos maestros...');
-  console.log('Estado de conexión:', isOnline.value ? 'Conectado' : 'Sin conexión');
-	
-	// Obtener estadísticas del cache para logging
-	const stats = cacheStats.value;
-	console.log('Estadísticas del cache:', stats);
-	
-	try {
-		// loadMasterData() maneja automáticamente:
-		// - Si hay internet: verifica si el cache ha expirado y actualiza solo si es necesario
-		// - Si no hay internet: usa los datos del cache sin intentar actualizar
-		await loadMasterData();
-		
-		// Mostrar información sobre el resultado
-		const updatedStats = cacheStats.value;
-		const hasData = updatedStats.productos.count > 0 && 
-		               updatedStats.socios.count > 0 && 
-		               updatedStats.fincas.count > 0 && 
-		               updatedStats.tecnicos.count > 0 &&
-		               updatedStats.abonos.count > 0;
-		
-		if (hasData) {
-			console.log('✅ Datos maestros disponibles:', {
-				productos: updatedStats.productos.count,
-				socios: updatedStats.socios.count,
-				fincas: updatedStats.fincas.count,
-				tecnicos: updatedStats.tecnicos.count,
-				abonos: updatedStats.abonos.count
-			});
-			
-			if (isOnline.value) {
-				console.log('📡 Cache verificado y actualizado si era necesario');
-			} else {
-				console.log('💾 Usando datos del cache (sin conexión)');
-			}
-		} else {
-			if (isOnline.value) {
-				console.warn('⚠️ No se pudieron cargar los datos maestros');
-			} else {
-				console.warn('⚠️ Sin conexión y sin datos en cache');
-			}
-		}
-		
-	} catch (error) {
-		console.error('❌ Error al inicializar datos maestros:', error);
-	}
-});
+  // Si no hay sesión activa, no intentamos cargar/actualizar datos maestros desde API
+  if (!sessionCookie) {
+    console.log('No hay sesión activa - se usarán datos del cache si están disponibles')
+    return
+  }
+
+  console.log('Inicializando datos maestros...')
+  console.log('Estado de conexión:', isOnline.value ? 'Conectado' : 'Sin conexión')
+
+  // Obtener estadísticas del cache para logging
+  const stats = cacheStats.value
+  console.log('Estadísticas del cache:', stats)
+
+  try {
+    // loadMasterData() maneja automáticamente:
+    // - Si hay internet: verifica si el cache ha expirado y actualiza solo si es necesario
+    // - Si no hay internet: usa los datos del cache sin intentar actualizar
+    await loadMasterData()
+
+    // Mostrar información sobre el resultado
+    const updatedStats = cacheStats.value
+    const hasData = updatedStats.productos.count > 0 && 
+                   updatedStats.socios.count > 0 && 
+                   updatedStats.fincas.count > 0 && 
+                   updatedStats.tecnicos.count > 0 &&
+                   updatedStats.abonos.count > 0
+
+    if (hasData) {
+      console.log('✅ Datos maestros disponibles:', {
+        productos: updatedStats.productos.count,
+        socios: updatedStats.socios.count,
+        fincas: updatedStats.fincas.count,
+        tecnicos: updatedStats.tecnicos.count,
+        abonos: updatedStats.abonos.count
+      })
+
+      if (isOnline.value) {
+        console.log('📡 Cache verificado y actualizado si era necesario')
+      } else {
+        console.log('💾 Usando datos del cache (sin conexión)')
+      }
+    } else {
+      if (isOnline.value) {
+        console.warn('⚠️ No se pudieron cargar los datos maestros')
+      } else {
+        console.warn('⚠️ Sin conexión y sin datos en cache')
+      }
+    }
+
+  } catch (error) {
+    console.error('❌ Error al inicializar datos maestros:', error)
+  }
+})
+
+// Al completar el login, inicializar caches e intentar cargar datos maestros según políticas de validez
+async function onLoginSuccess() {
+  // Verificar que ahora existe cookie de sesión
+  const cookies = document.cookie.split("; ");
+  const sessionCookie = cookies.find(cookie => cookie.startsWith("sid="));
+  if (!sessionCookie) {
+    console.warn('Login reportado como exitoso pero no se detecta cookie de sesión; se omite carga de cache')
+    return
+  }
+
+  try {
+    await Promise.all([
+      cacheService.initialize(),
+      offlineStorage.initialize()
+    ])
+    // Con sesión activa, aplicar política: si no hay datos, cargar; si hay y están expirados, actualizar; si son vigentes, no tocar
+    await loadMasterData(false)
+  } catch (e) {
+    console.error('Error inicializando caches tras login:', e)
+  }
+}
 
 </script>
 
@@ -256,7 +284,7 @@ onMounted(async () => {
 	<ListadoProductosPorSocioDialog v-model:visible="dialogVisible['ListadoProductosPorSocioDialog']" />
 	<FicheroCuarentenaDialog v-model:visible="dialogVisible['FicheroCuarentenaDialog']" />
 	<GestionInventarioDialog v-model:visible="dialogVisible['GestionInventarioDialog']" />
-	<LoginDialog v-model:visible="dialogVisible['LoginDialog']" />
+    <LoginDialog v-model:visible="dialogVisible['LoginDialog']" @login-success="onLoginSuccess" />
 	
 	<!-- PWA Install Prompt -->
 	<PWAInstallPrompt 

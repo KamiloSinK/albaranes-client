@@ -153,11 +153,37 @@ class CacheService {
   // Obtener datos del cache (desde memoria si no expirado)
   private getFromCache<T>(type: keyof typeof this.STORES): T[] | null {
     const meta = this.getMeta(type)
-    if (!meta) return null
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false
+
+    // Si no hay metadatos
+    if (!meta) {
+      // En modo offline, devolver lo que haya en memoria aunque no haya meta
+      if (offline) {
+        const memData = this.mem[type] as T[]
+        if (Array.isArray(memData) && memData.length > 0) {
+          console.log(`Cache (sin meta) servido en modo offline para ${String(type)}: ${memData.length} elementos`)
+          return memData
+        }
+      }
+      return null
+    }
+
     const now = Date.now()
     const isExpired = (now - meta.timestamp) > this.CACHE_DURATION
     const isVersionValid = meta.version === this.VERSION
+
+    // En modo offline, servir siempre lo que esté en memoria, incluso si expirado o versión distinta
+    if (offline) {
+      const memData = this.mem[type] as T[]
+      if (Array.isArray(memData) && memData.length > 0) {
+        console.log(`Cache servido en modo offline para ${String(type)} (expirado=${isExpired}, versionValida=${isVersionValid}): ${memData.length} elementos`)
+        return memData
+      }
+    }
+
+    // Modo online: validar expiración y versión
     if (isExpired || !isVersionValid) return null
+
     const data = this.mem[type] as T[]
     if (Array.isArray(data) && data.length === meta.count) {
       console.log(`Cache hit para ${String(type)}: ${data.length} elementos`)
@@ -288,6 +314,12 @@ class CacheService {
       localStorage.removeItem(this.META_KEYS[type])
       this.mem[type] = []
     })
+    // Eliminar también claves legacy en localStorage por seguridad
+    try {
+      (Object.keys(this.OLD_KEYS) as (keyof typeof this.OLD_KEYS)[]).forEach((type) => {
+        localStorage.removeItem(this.OLD_KEYS[type])
+      })
+    } catch {}
     console.log('Todo el cache ha sido eliminado')
   }
 

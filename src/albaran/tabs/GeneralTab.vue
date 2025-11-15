@@ -11,12 +11,13 @@ import * as fincas from "@/services/fincas";
 import * as tecnicos from "@/services/tecnicos";
 import { useMasterDataCache } from "@/composables/useMasterDataCache";
 import { useNetworkStatus } from "@/composables/useNetworkStatus";
+import { useSession } from "@/composables/useSession";
 import { cacheService } from "@/services/cacheService";
 import type {
-	RetrieveAlbaranResponse,
-	RetrieveFincaResponse,
-	RetrieveSocioResponse,
-	RetrieveTecnicoResponse
+    RetrieveAlbaranResponse,
+    RetrieveFincaResponse,
+    RetrieveSocioResponse,
+    RetrieveTecnicoResponse
 } from "@coa/api-types";
 import type {AlbaranDialogState, ProductData, AbonoData} from "@/albaran/AlbaranDialog.vue";
 import type {RetrieveMode} from "@/services/albaranes";
@@ -43,8 +44,11 @@ const loadingSocio = ref<boolean>(false);
 const loadingFinca = ref<boolean>(false);
 const loadingTecnico = ref<boolean>(false);
 
+// Tipos locales para opciones en Select (incluye bc_id opcional si viene del backend/cache)
+type FincaOption = RetrieveFincaResponse & { bc_id?: string };
+
 const sociosList = ref<RetrieveSocioResponse[]>([]);
-const fincasList = ref<RetrieveFincaResponse[]>([]);
+const fincasList = ref<FincaOption[]>([]);
 const tecnicosList = ref<TecnicoOption[]>([]);
 
 // Variables reactivas para los valores seleccionados de los Select
@@ -54,6 +58,7 @@ const selectedFincaId = ref<number | null>(null);
 // Cache y estado de red
 const { isOnline } = useNetworkStatus();
 const { getSocios, getFincas, getTecnicos } = useMasterDataCache();
+const { hasSession } = useSession();
 
 // Inicializar listas con datos del cache al montar el componente
 onMounted(() => {
@@ -90,8 +95,8 @@ async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
         let limit = e.last - e.first;
         if (limit <= 0) limit = 200;
 
-        // Offline: usar cache
-        if (!isOnline.value) {
+        // Sin sesión o sin conexión: usar cache
+        if (!isOnline.value || !hasSession()) {
             const cachedSocios = getSocios();
             const startIndex = e.first;
             const endIndex = e.last;
@@ -136,7 +141,6 @@ async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
 
 // Función para cargar socios inicialmente
 async function loadInitialSocios() {
-    if (sociosList.value.length > 0) return; // Ya están cargados
     loadingSocio.value = true;
     try {
         // Pintar rápido desde caché si existe
@@ -145,14 +149,13 @@ async function loadInitialSocios() {
             sociosList.value = cachedSocios;
         }
 
-        // Con conexión, consultar API siempre
-        if (isOnline.value) {
-            const response = await socios.retrieveSocios({ limit: 1000, offset: 0 });
+        // Con conexión y sesión, consultar API
+        if (isOnline.value && hasSession()) {
+            const response = await socios.retrieveSocios({ limit: 999999, offset: 0 });
             if (response.ok) {
                 const data: RetrieveSocioResponse[] = await response.json();
                 sociosList.value = data;
             }
-            return;
         }
         // Sin conexión, mantener cache
     } catch (err: unknown) {
@@ -168,39 +171,33 @@ async function loadInitialSocios() {
 
 // Función para cargar fincas inicialmente
 async function loadInitialFincas() {
-	if (fincasList.value.length > 0) return; // Ya están cargadas
-	
-	loadingFinca.value = true;
-	try {
-		// Si no hay internet, usar cache
-		if (!isOnline.value) {
-			console.log('Sin conexión, cargando fincas desde cache...');
-			const cachedFincas = getFincas();
-			fincasList.value = cachedFincas;
-			return;
-		}
+    loadingFinca.value = true;
+    try {
+        // Si no hay internet o no hay sesión, usar cache
+        if (!isOnline.value || !hasSession()) {
+            const cachedFincas = getFincas();
+            fincasList.value = cachedFincas;
+        } else {
+            // Si hay internet, cargar TODO desde API
+            const response = await fincas.retrieveFincas({
+                limit: 999999,
+                offset: 0
+            });
 
-		// Si hay internet, cargar desde API
-		const response = await fincas.retrieveFincas({
-			limit: 1000, // Cargar las primeras 1000 fincas
-			offset: 0
-		});
-
-		if (response.ok) {
-			const data: RetrieveFincaResponse[] = await response.json();
-			fincasList.value = data;
-		}
-	} catch (err: unknown) {
-		console.error("Error al cargar fincas iniciales:", err);
-		// En caso de error, intentar cargar desde cache
-		console.log('Error en API, intentando cargar fincas desde cache...');
-		const cachedFincas = getFincas();
-		if (cachedFincas.length > 0) {
-			fincasList.value = cachedFincas;
-		}
-	} finally {
-		loadingFinca.value = false;
-	}
+            if (response.ok) {
+                const data: RetrieveFincaResponse[] = await response.json();
+                fincasList.value = data;
+            }
+        }
+    } catch (err: unknown) {
+        console.error("Error al cargar fincas iniciales:", err);
+        const cachedFincas = getFincas();
+        if (cachedFincas.length > 0) {
+            fincasList.value = cachedFincas;
+        }
+    } finally {
+        loadingFinca.value = false;
+    }
 }
 
 // Función para cargar técnicos inicialmente
@@ -217,8 +214,8 @@ async function loadInitialTecnicos() {
             }));
         }
 
-        // Con conexión, consultar API siempre
-        if (isOnline.value) {
+        // Con conexión y sesión, consultar API
+        if (isOnline.value && hasSession()) {
             const response = await tecnicos.retrieveTecnicos({ limit: 1000, offset: 0 });
             if (response.ok) {
                 const data: RetrieveTecnicoResponse[] = await response.json();
@@ -250,7 +247,7 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
         let limit = e.last - e.first;
         if (limit <= 0) limit = 200;
 
-        if (!isOnline.value) {
+        if (!isOnline.value || !hasSession()) {
             const cachedFincas = getFincas();
             const startIndex = e.first;
             const endIndex = e.last;
@@ -297,7 +294,7 @@ async function onLazyLoadTecnicos(e: VirtualScrollerLazyEvent) {
         let limit = e.last - e.first;
         if (limit <= 0) limit = 200;
 
-        if (!isOnline.value) {
+        if (!isOnline.value || !hasSession()) {
             const cachedTecnicos = getTecnicos();
             const startIndex = e.first;
             const endIndex = e.last;
@@ -480,7 +477,7 @@ async function onClickFind() {
 }
 
 function onChangeSelectSocio(e: SelectChangeEvent) {
-    // Al seleccionar, mostrar el bc_id en el input (fallback al id formateado)
+    // Al seleccionar, mostrar el bc_id completo en el input (fallback al id formateado solo si falta bc_id)
     selectedSocioId.value = e.value;
     const socioSel = sociosList.value.find(s => s.id === e.value);
     props.formSlot.socioId.value = socioSel?.bc_id ?? e.value.toString().padStart(4, "0");
@@ -489,7 +486,7 @@ function onChangeSelectSocio(e: SelectChangeEvent) {
 		changePlaceholderNewItem().then().catch();
 }
 
-// Función optimizada para buscar socio por código (solo en lista ya cargada)
+// Función optimizada para buscar socio por código (solo en lista ya cargada, filtra por bc_id)
 async function onChangeSocioId(event: Event) {
     const target = event.target as HTMLInputElement;
     const codigo = target.value.trim();
@@ -500,25 +497,9 @@ async function onChangeSocioId(event: Event) {
 		return;
 	}
 
-	// Buscar coincidencias desde 1 carácter
-
-    // Preferir coincidencias por bc_id; fallback por ID con padding
+	// Buscar coincidencias desde 1 carácter por bc_id únicamente
     const term = codigo.toLowerCase();
-    let socioEncontrado = sociosList.value.find(socio => (socio.bc_id ?? '').toString().trim().toLowerCase().includes(term))
-        ?? sociosList.value.find(socio => socio.id.toString().padStart(4, "0").toLowerCase().includes(term));
-
-    // Si no está en memoria y hay conexión, consultar API con search
-    if (!socioEncontrado && isOnline.value) {
-        try {
-            const resp = await socios.retrieveSocios({ search: term, limit: 1 } as any);
-            if (resp.ok) {
-                const arr = await resp.json();
-                socioEncontrado = arr?.[0] ?? null;
-            }
-        } catch (err) {
-            console.error('Error buscando socio por API:', err);
-        }
-    }
+    const socioEncontrado = sociosList.value.find(socio => (socio.bc_id ?? '').toString().trim().toLowerCase().includes(term));
 
     if (socioEncontrado) {
         selectedSocioId.value = socioEncontrado.id;
@@ -537,6 +518,8 @@ async function onChangeSocioId(event: Event) {
 }
 
 async function changePlaceholderNewItem() {
+    // Si no hay sesión o conexión, no consultar API
+    if (!isOnline.value || !hasSession()) return;
     console.log(selectedFincaId.value, selectedSocioId.value)
     const response = await fetch(`${import.meta.env.VITE_API_HOST}/albaranes/placeholder?fincaId=${selectedFincaId.value}&socioId=${selectedSocioId.value}`, {
         method: "GET",
@@ -547,8 +530,8 @@ async function changePlaceholderNewItem() {
         credentials: "include"
     });
 
-	const data = await response.json();
-	myPlaceholder.value = data.placeholder;
+    const data = await response.json();
+    myPlaceholder.value = data.placeholder;
 }
 
 const myPlaceholder = ref<string>("");
@@ -559,9 +542,11 @@ function loadAlbaranToForm(data: RetrieveAlbaranResponse) {
 		originalEvent: new Event("workaround")
 	});
 
-	props.formSlot.socioId.value = data.general.socioId.toString().padStart(4, "0");
+	// Mostrar el bc_id del socio si está disponible; fallback al id formateado
+	const socioSel = sociosList.value.find(s => s.id === data.general.socioId);
+	props.formSlot.socioId.value = socioSel?.bc_id ?? data.general.socioId.toString().padStart(4, "0");
 	selectedSocioId.value = data.general.socioId; // Sincronizar el Select con el código cargado
-	// Mostrar bc_id si existe en cache; fallback al id formateado
+	// Mostrar bc_id de la finca si existe en cache; fallback al id formateado
 	const fincaSel = fincasList.value.find(f => f.id === data.general.fincaId);
 	props.formSlot.fincaId.value = fincaSel?.bc_id ?? data.general.fincaId.toString().padStart(4, "0");
 	selectedFincaId.value = data.general.fincaId; // Sincronizar el Select de finca con el código cargado
@@ -628,10 +613,14 @@ async function onChangeSelectFinca(e: SelectChangeEvent) {
 
 			if (props.formSlot.socioId.value && props.formSlot.fincaId.value && !dialogState.value.originalValues)
 				changePlaceholderNewItem().then().catch();
-		} else {
-			// Fallback: si no está en cache, hacer consulta (solo como respaldo)
-			console.warn('Finca no encontrada en cache, haciendo consulta a API');
-			const response = await fincas.retrieveFinca(e.value);
+        } else {
+            // Fallback: si no está en cache, hacer consulta (solo si hay sesión y conexión)
+            if (!hasSession() || !isOnline.value) {
+                console.warn('Finca no encontrada en cache y no hay sesión/conexión; omitiendo consulta');
+                return;
+            }
+            console.warn('Finca no encontrada en cache, haciendo consulta a API');
+            const response = await fincas.retrieveFinca(e.value);
 
 			if (!response.ok) {
 				alert(`HTTP status: ${response.status}`);
@@ -655,7 +644,7 @@ async function onChangeSelectFinca(e: SelectChangeEvent) {
 	}
 }
 
-// Función para buscar finca por ID y actualizar el Select
+// Función para buscar finca por código y actualizar el Select (filtra solo por bc_id)
 async function onChangeFincaId(event: Event) {
     const target = event.target as HTMLInputElement;
     const codigo = target.value.trim();
@@ -666,23 +655,9 @@ async function onChangeFincaId(event: Event) {
         return;
     }
     
-    // Preferir coincidencias por bc_id; fallback por ID con padding
+    // Coincidencias por bc_id únicamente
     const term = codigo.toLowerCase();
-    let finca = fincasList.value.find(f => (f.bc_id ?? '').toString().trim().toLowerCase().includes(term))
-        ?? fincasList.value.find(f => f.id.toString().padStart(4, "0").toLowerCase().includes(term));
-
-    // Si no está en memoria y hay conexión, consultar API con search
-    if (!finca && isOnline.value) {
-        try {
-            const resp = await fincas.retrieveFincas({ search: term, limit: 1 } as any);
-            if (resp.ok) {
-                const arr = await resp.json();
-                finca = arr?.[0] ?? null;
-            }
-        } catch (err) {
-            console.error('Error buscando finca por API:', err);
-        }
-    }
+    const finca = fincasList.value.find(f => (f.bc_id ?? '').toString().trim().toLowerCase().includes(term));
 
     if (finca) {
         selectedFincaId.value = finca.id;
@@ -691,17 +666,24 @@ async function onChangeFincaId(event: Event) {
             fincasList.value = [finca!, ...fincasList.value];
         }
         // No sobrescribir el texto del usuario mientras escribe
-        // Recuperar sectores desde API para asegurar datos consistentes
-        try {
-            const response = await fincas.retrieveFinca(finca.id);
-            if (response.ok) {
-                const data: RetrieveFincaResponse = await response.json();
-                const fullSectorIds = data.sectorIds.map((sectorId: any) => finca!.id.toString().padStart(4, "0") + sectorId.toString().padStart(4, "0"));
-                props.formSlot.sectorIdsPreview.value = fullSectorIds.join("-");
-                dialogState.value.selectedFincaSectorIds = data.sectorIds;
+        // Recuperar sectores desde API para asegurar datos consistentes (solo si hay sesión y conexión)
+        if (isOnline.value && hasSession()) {
+            try {
+                const response = await fincas.retrieveFinca(finca.id);
+                if (response.ok) {
+                    const data: RetrieveFincaResponse = await response.json();
+                    const fullSectorIds = data.sectorIds.map((sectorId: any) => finca!.id.toString().padStart(4, "0") + sectorId.toString().padStart(4, "0"));
+                    props.formSlot.sectorIdsPreview.value = fullSectorIds.join("-");
+                    dialogState.value.selectedFincaSectorIds = data.sectorIds;
+                }
+            } catch (err) {
+                console.error('Error recuperando sectores de la finca:', err);
             }
-        } catch (err) {
-            console.error('Error recuperando sectores de la finca:', err);
+        } else {
+            // Fallback: usar sectores del cache si están disponibles
+            const fullSectorIds = (finca.sectorIds || []).map((sectorId: any) => finca!.id.toString().padStart(4, "0") + sectorId.toString().padStart(4, "0"));
+            props.formSlot.sectorIdsPreview.value = fullSectorIds.join("-");
+            dialogState.value.selectedFincaSectorIds = finca.sectorIds || [];
         }
         
         if (props.formSlot.socioId.value && props.formSlot.fincaId.value && !dialogState.value.originalValues)
@@ -720,9 +702,11 @@ function onClickCheckAll() {
 
 // Cargar socios y fincas inicialmente cuando se monta el componente
 onMounted(() => {
-	loadInitialSocios();
-	loadInitialFincas();
-	loadInitialTecnicos();
+    if (hasSession()) {
+        loadInitialSocios();
+        loadInitialFincas();
+        loadInitialTecnicos();
+    }
 });
 </script>
 

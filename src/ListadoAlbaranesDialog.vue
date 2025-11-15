@@ -5,19 +5,21 @@
 <script setup lang="ts">
 import * as albaranes from "@/services/albaranes";
 import {Form, type FormResolverOptions, type FormSubmitEvent} from "@primevue/forms";
-import {ref, onMounted} from "vue";
+import {ref, onMounted, watch} from "vue";
 import type {RetrieveAlbaranResponse, RetrieveFincaResponse, RetrieveSocioResponse} from "@coa/api-types";
 import {Button, type VirtualScrollerLazyEvent} from "primevue";
 import * as socios from "@/services/socios.ts";
 import * as fincas from "@/services/fincas.ts";
 import { useMasterDataCache } from "@/composables/useMasterDataCache";
 import { useNetworkStatus } from "@/composables/useNetworkStatus";
+import { useSession } from "@/composables/useSession";
 import { cacheService } from "@/services/cacheService";
 
 const visible = defineModel("visible", {type: Boolean, required: true, default: false});
 
 // Cache y network status
 const { isOnline } = useNetworkStatus();
+const { hasSession } = useSession();
 const { getSocios, getFincas } = useMasterDataCache();
 
 const sociosList = ref<RetrieveSocioResponse[]>([]);
@@ -50,6 +52,39 @@ onMounted(() => {
   }
   if (fincasList.value.length === 0) {
     loadInitialFincas().then().catch();
+  }
+});
+
+// Repoblar al abrir el diálogo y re-evaluar según conectividad
+watch(visible, (isOpen) => {
+  if (isOpen) {
+    // Pintar rápido desde cache
+    const cachedSocios = getSocios();
+    if (cachedSocios.length > 0) sociosList.value = cachedSocios;
+    const cachedFincas = getFincas();
+    if (cachedFincas.length > 0) fincasList.value = cachedFincas;
+
+    // Si hay conexión y sesión, refrescar en background
+    if (isOnline.value && hasSession()) {
+      void loadInitialSocios();
+      void loadInitialFincas();
+    }
+  }
+});
+
+// Responder dinámicamente a cambios de conectividad
+watch(isOnline, (online) => {
+  if (!visible.value) return;
+  if (online && hasSession()) {
+    // Con conexión: refrescar desde API en background
+    void loadInitialSocios();
+    void loadInitialFincas();
+  } else {
+    // Sin conexión: asegurar que los Selects muestren cache
+    const cachedSocios = getSocios();
+    if (cachedSocios.length > 0) sociosList.value = cachedSocios;
+    const cachedFincas = getFincas();
+    if (cachedFincas.length > 0) fincasList.value = cachedFincas;
   }
 });
 
@@ -146,16 +181,15 @@ function onHideDialog() {}
 
 // Cargar inicialmente un lote de opciones para que el Select funcione sin esperar scroll
 async function loadInitialSocios() {
-  if (sociosList.value.length > 0) return;
   loadingSocio.value = true;
   try {
     // Pintar rápido desde caché si existe
     const cached = getSocios();
     if (cached.length > 0) sociosList.value = cached;
 
-    // Con conexión, consultar API siempre
-    if (isOnline.value) {
-      const response = await socios.retrieveSocios({ limit: 1000, offset: 0 });
+    // Con conexión y sesión, consultar API
+    if (isOnline.value && hasSession()) {
+      const response = await socios.retrieveSocios({ limit: 999999, offset: 0 });
       if (response.ok) sociosList.value = await response.json();
     }
   } catch (err) {
@@ -168,16 +202,15 @@ async function loadInitialSocios() {
 }
 
 async function loadInitialFincas() {
-  if (fincasList.value.length > 0) return;
   loadingFinca.value = true;
   try {
     // Pintar rápido desde caché si existe
     const cached = getFincas();
     if (cached.length > 0) fincasList.value = cached;
 
-    // Con conexión, consultar API siempre
-    if (isOnline.value) {
-      const response = await fincas.retrieveFincas({ limit: 1000, offset: 0 });
+    // Con conexión y sesión, consultar API
+    if (isOnline.value && hasSession()) {
+      const response = await fincas.retrieveFincas({ limit: 999999, offset: 0 });
       if (response.ok) fincasList.value = await response.json();
     }
   } catch (err) {
@@ -197,12 +230,12 @@ async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
 		let limit = e.last - e.first;
 		if (limit <= 0) limit = 200;
 
-		if (!isOnline.value) {
-			const cachedSocios = getSocios();
-			const startIndex = e.first;
-			const endIndex = e.last;
-			const paginatedData = cachedSocios.slice(startIndex, endIndex);
-			const items = [...sociosList.value];
+    if (!isOnline.value || !hasSession()) {
+      const cachedSocios = getSocios();
+      const startIndex = e.first;
+      const endIndex = e.last;
+      const paginatedData = cachedSocios.slice(startIndex, endIndex);
+      const items = [...sociosList.value];
 			for (let i = 0; i < paginatedData.length; i++) items[startIndex + i] = paginatedData[i];
 			sociosList.value = items;
 			return;
@@ -253,12 +286,12 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
 		let limit = e.last - e.first;
 		if (limit <= 0) limit = 200;
 
-		if (!isOnline.value) {
-			const cachedFincas = getFincas();
-			const startIndex = e.first;
-			const endIndex = e.last;
-			const paginatedData = cachedFincas.slice(startIndex, endIndex);
-			const items = [...fincasList.value];
+    if (!isOnline.value || !hasSession()) {
+      const cachedFincas = getFincas();
+      const startIndex = e.first;
+      const endIndex = e.last;
+      const paginatedData = cachedFincas.slice(startIndex, endIndex);
+      const items = [...fincasList.value];
 			for (let i = 0; i < paginatedData.length; i++) items[startIndex + i] = paginatedData[i];
 			fincasList.value = items;
 			return;

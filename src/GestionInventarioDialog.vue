@@ -9,8 +9,11 @@ import type { VirtualScrollerLazyEvent, SelectChangeEvent } from 'primevue'
 import type { RetrieveFincaResponse, RetrieveSocioResponse } from '@coa/api-types'
 import { useMasterDataCache } from '@/composables/useMasterDataCache'
 import { useNetworkStatus } from '@/composables/useNetworkStatus'
+import { useSession } from '@/composables/useSession'
 import * as socios from '@/services/socios'
 import * as fincas from '@/services/fincas'
+// Nota: para sectores offline, usamos retrieveSectoresByFinca del servicio de sectores,
+// que ya resuelve desde cache leyendo los sectores asociados a la finca
 import { cacheService } from '@/services/cacheService'
 import * as sectoresService from '@/services/sectores'
 
@@ -18,11 +21,15 @@ const visible = defineModel('visible', { type: Boolean, required: true, default:
 
 // Estado de red y caché
 const { isOnline } = useNetworkStatus()
+const { hasSession } = useSession()
 const { getSocios, getFincas } = useMasterDataCache()
+
+// Tipos locales para opciones en Select (incluye bc_id opcional si viene del backend/cache)
+type FincaOption = RetrieveFincaResponse & { bc_id?: string }
 
 // Selects
 const sociosList = ref<RetrieveSocioResponse[]>([])
-const fincasList = ref<RetrieveFincaResponse[]>([])
+const fincasList = ref<FincaOption[]>([])
 const loadingSocio = ref<boolean>(false)
 const loadingFinca = ref<boolean>(false)
 const selectedSocioId = ref<number | null>(null)
@@ -110,7 +117,6 @@ function detectRoleFromLocalStorage(): UserRole | null {
 
 // Carga inicial rápida desde caché
 async function loadInitialSocios() {
-  if (sociosList.value.length > 0) return
   loadingSocio.value = true
   try {
     // Pintar rápido desde caché si existe
@@ -118,9 +124,9 @@ async function loadInitialSocios() {
     if (cached.length > 0) {
       sociosList.value = cached
     }
-    // Con conexión, consultar API siempre
-    if (isOnline.value) {
-      const response = await socios.retrieveSocios({ limit: 1000, offset: 0 })
+    // Con conexión y sesión, consultar API
+    if (isOnline.value && hasSession()) {
+      const response = await socios.retrieveSocios({ limit: 999999, offset: 0 })
       if (response.ok) sociosList.value = await response.json()
     }
   } catch (err) {
@@ -131,7 +137,6 @@ async function loadInitialSocios() {
 }
 
 async function loadInitialFincas() {
-  if (fincasList.value.length > 0) return
   loadingFinca.value = true
   try {
     // Pintar rápido desde caché si existe
@@ -139,9 +144,9 @@ async function loadInitialFincas() {
     if (cached.length > 0) {
       fincasList.value = cached
     }
-    // Con conexión, consultar API siempre
-    if (isOnline.value) {
-      const response = await fincas.retrieveFincas({ limit: 1000, offset: 0 })
+    // Con conexión y sesión, consultar API
+    if (isOnline.value && hasSession()) {
+      const response = await fincas.retrieveFincas({ limit: 999999, offset: 0 })
       if (response.ok) fincasList.value = await response.json()
     }
   } catch (err) {
@@ -160,7 +165,7 @@ async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
     let limit = e.last - e.first
     if (limit <= 0) limit = 200
 
-    if (!isOnline.value) {
+    if (!isOnline.value || !hasSession()) {
       const cached = getSocios()
       const start = e.first
       const end = e.last
@@ -199,7 +204,7 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
     let limit = e.last - e.first
     if (limit <= 0) limit = 200
 
-    if (!isOnline.value) {
+    if (!isOnline.value || !hasSession()) {
       const cached = getFincas()
       const start = e.first
       const end = e.last
@@ -250,7 +255,7 @@ function onChangeSelectSocio(e: SelectChangeEvent) {
   }
 }
 
-function onChangeSocioId(event: Event) {
+async function onChangeSocioId(event: Event) {
   const target = event.target as HTMLInputElement
   const codigo = target.value.trim()
   socioCodigo.value = codigo
@@ -262,14 +267,22 @@ function onChangeSocioId(event: Event) {
     return
   }
 
-  // Buscar primera coincidencia parcial por bc_id; fallback por id con padding
+  // Buscar primera coincidencia parcial por bc_id únicamente
   const term = codigo.toLowerCase()
   const socio = sociosList.value.find(s => {
     const bc = (s.bc_id ?? '').toString().trim().toLowerCase()
-    const idPad = s.id.toString().padStart(4, '0').toLowerCase()
-    return bc.includes(term) || idPad.includes(term)
+    return bc.includes(term)
   })
-  selectedSocioId.value = socio ? socio.id : null
+
+  if (socio) {
+    selectedSocioId.value = socio.id
+    // Inyectar en opciones si no existe para que el Select muestre etiqueta
+    if (!sociosList.value.some(s => s.id === socio!.id)) {
+      sociosList.value = [socio!, ...sociosList.value]
+    }
+  } else {
+    selectedSocioId.value = null
+  }
   // No sobrescribir lo que el usuario está escribiendo
 }
 
@@ -282,7 +295,7 @@ function onChangeSelectFinca(e: SelectChangeEvent) {
   loadSectoresForSelection()
 }
 
-function onChangeFincaId(event: Event) {
+async function onChangeFincaId(event: Event) {
   const target = event.target as HTMLInputElement
   const codigo = target.value.trim()
   fincaCodigo.value = codigo
@@ -293,29 +306,77 @@ function onChangeFincaId(event: Event) {
     return
   }
 
-  // Buscar primera coincidencia parcial por bc_id; fallback por id con padding
+  // Buscar primera coincidencia parcial por bc_id únicamente
   const term = codigo.toLowerCase()
   const finca = fincasList.value.find(f => {
     const bc = (f.bc_id ?? '').toString().trim().toLowerCase()
-    const idPad = f.id.toString().padStart(4, '0').toLowerCase()
-    return bc.includes(term) || idPad.includes(term)
+    return bc.includes(term)
   })
-  selectedFincaId.value = finca ? finca.id : null
+
+  if (finca) {
+    selectedFincaId.value = finca.id
+    // Inyectar en opciones si no existe para que el Select muestre etiqueta
+    if (!fincasList.value.some(ff => ff.id === finca!.id)) {
+      fincasList.value = [finca!, ...fincasList.value]
+    }
+  } else {
+    selectedFincaId.value = null
+  }
   // No sobrescribir lo que el usuario está escribiendo
   loadSectoresForSelection()
 }
 
 async function loadSectoresForSelection() {
-  // Limpiar si falta socio o finca
-  if (!selectedSocioId.value || !selectedFincaId.value) {
+  // Limpiar si falta finca
+  if (!selectedFincaId.value) {
     sectoresRows.value = []
     pendingUpdates.value = []
     return
   }
+  // Si no hay sesión o conexión, cargar sectores desde cache a través del servicio
+  if (!hasSession() || !isOnline.value) {
+    loadingSectores.value = true
+    try {
+      const fincaSel = fincasList.value.find(f => f.id === selectedFincaId.value)
+      const socioNombre = (() => {
+        if (selectedSocioId.value) return sociosList.value.find(s => s.id === selectedSocioId.value)?.nombre ?? ''
+        const sid = (fincaSel as any)?.socio_id
+        return sid ? (sociosList.value.find(s => s.id === sid)?.nombre ?? '') : ''
+      })()
+      const fincaNombre = fincaSel?.nombre ?? ''
+      const resp = await sectoresService.retrieveSectoresByFinca(selectedFincaId.value)
+      if (!resp.ok) {
+        sectoresRows.value = []
+        pendingUpdates.value = []
+        return
+      }
+      const sectores: any[] = await resp.json()
+      sectoresRows.value = (sectores || []).map((sec: any) => ({
+        id: sec?.id,
+        socio: socioNombre,
+        finca: fincaNombre,
+        sector: sectoresService.parseSectorNumero(sec),
+        sinInventario: (typeof sec?.sin_inventario !== 'undefined') ? sec.sin_inventario : sec?.sinInventario
+      }))
+      sectoresOriginalRows.value = sectoresRows.value.map(r => ({ ...r }))
+      pendingUpdates.value = []
+    } catch (err) {
+      console.error('Error al cargar sectores (offline/cache):', err)
+      sectoresRows.value = []
+    } finally {
+      loadingSectores.value = false
+    }
+    return
+  }
   loadingSectores.value = true
   try {
-    const socioNombre = sociosList.value.find(s => s.id === selectedSocioId.value)?.nombre ?? ''
-    const fincaNombre = fincasList.value.find(f => f.id === selectedFincaId.value)?.nombre ?? ''
+    const fincaSel = fincasList.value.find(f => f.id === selectedFincaId.value)
+    const socioNombre = (() => {
+      if (selectedSocioId.value) return sociosList.value.find(s => s.id === selectedSocioId.value)?.nombre ?? ''
+      const sid = (fincaSel as any)?.socio_id
+      return sid ? (sociosList.value.find(s => s.id === sid)?.nombre ?? '') : ''
+    })()
+    const fincaNombre = fincaSel?.nombre ?? ''
 
     const resp = await sectoresService.retrieveSectoresByFinca(selectedFincaId.value)
     if (!resp.ok) {
@@ -365,6 +426,45 @@ onMounted(() => {
   resetAll()
   loadInitialSocios()
   loadInitialFincas()
+})
+
+// Re-evaluar rol al abrir/cerrar el diálogo para evitar persistencias tras logout/login
+watch(visible, (isOpen) => {
+  if (isOpen) {
+    currentRole.value = detectRoleFromLocalStorage()
+    // Técnicos siempre en modo lectura
+    if (currentRole.value === 'tecnico') {
+      readOnlyMode.value = true
+    } else {
+      // Al abrir, mantener el estado actual de edición, pero nunca permitir edición a técnicos
+      // Si venimos de un logout, el reset ya dejó en lectura; el usuario podrá activar edición si es socio
+      readOnlyMode.value = readOnlyMode.value && currentRole.value !== 'socio' ? true : readOnlyMode.value
+    }
+
+    // Repoblar selects al abrir: tras cerrar se vacían por resetAll()
+    // Carga inicial rápida desde caché y luego API si hay sesión/conexión
+    loadInitialSocios()
+    loadInitialFincas()
+  } else {
+    // Al cerrar, limpiar estado para no arrastrar valores entre sesiones
+    resetAll()
+  }
+})
+
+// Responder dinámicamente a cambios de conectividad para repoblar selects
+watch(isOnline, (online) => {
+  if (!visible.value) return
+  if (online && hasSession()) {
+    // Con conexión y sesión: refrescar desde API en background
+    void loadInitialSocios()
+    void loadInitialFincas()
+  } else {
+    // Sin conexión o sin sesión: asegurar que los Selects muestren cache
+    const cachedSocios = getSocios()
+    if (cachedSocios.length > 0) sociosList.value = cachedSocios
+    const cachedFincas = getFincas()
+    if (cachedFincas.length > 0) fincasList.value = cachedFincas
+  }
 })
 
 // Al volver a modo lectura sin guardar, deshacer cambios

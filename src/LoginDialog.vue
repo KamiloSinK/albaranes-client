@@ -5,6 +5,9 @@
 <script setup lang="ts">
 import {Form, type FormResolverOptions, type FormSubmitEvent} from "@primevue/forms";
 import {ref} from "vue";
+const emit = defineEmits<{
+  (e: 'login-success', authUser?: { userId?: number; role?: 'tecnico' | 'socio'; userName?: string }): void
+}>()
 // Nota: el backend puede devolver { userId, role } además de token/userName
 
 const visible = defineModel("visible", {type: Boolean, required: true, default: false});
@@ -73,6 +76,8 @@ async function onSubmitForm(e: FormSubmitEvent) {
           localStorage.setItem('auth.user', JSON.stringify(authUser));
         } catch {}
 
+        // Emitir evento de login exitoso para que el contenedor inicialice caches y datos maestros
+        emit('login-success', authUser)
         visible.value = false;
 	} catch (err: unknown) {
 		alert("Error al iniciar sesión\nAsegúrate de estar conectado a Internet.")
