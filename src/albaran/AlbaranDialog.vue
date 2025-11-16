@@ -94,7 +94,13 @@ const dialogState = reactive<AlbaranDialogState>({
 
 const datosMenu = ref<InstanceType<typeof Menu>>();
 
-function onHideDialog() {}
+function onHideDialog() {
+    // Limpiar tablas de productos y abonos al cerrar el modal
+    dialogState.products = [];
+    dialogState.abonosTanqueA = [];
+    dialogState.abonosTanqueB = [];
+    dialogState.currentEditAbonoTanque = undefined;
+}
 
 function onClickDatosMenu(e: Event) {
 	datosMenu.value?.toggle(e);
