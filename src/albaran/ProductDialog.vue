@@ -179,43 +179,51 @@ async function onSelectProduct(e: SelectChangeEvent) {
     try {
         const selectedProductId: number = e.value as number;
 
-        // Mostrar vista previa usando el cache completo si está disponible
+        // Usar únicamente el cache para la vista previa; no hacer consultas a la API
         const fullCached = getProductos();
-        const cachedDetail = fullCached.find((p: any) => p.id === selectedProductId);
-        if (cachedDetail) {
-            previewMateriaActiva.value = cachedDetail.materiaActiva ?? "";
-            previewPlazoSeguimiento.value = cachedDetail.plazoSeguimiento?.toString() ?? "";
-            previewDosis.value = cachedDetail.dosis ?? "";
-            previewPlaga.value = cachedDetail.plaga ?? "";
-        }
+        const cachedDetail = Array.isArray(fullCached)
+            ? (fullCached as any[]).find((p: any) => p.id === selectedProductId)
+            : undefined;
 
-        // Refrescar detalle desde API si hay conexión
-        if (isOnline.value) {
-            const response = await productos.retrieveProducto(selectedProductId);
-            if (!response.ok) {
-                alert(`HTTP status: ${response.status}`);
-                return;
-            }
-            const data: RetrieveProductResponse = await response.json();
-            previewMateriaActiva.value = data.materiaActiva;
-            previewPlazoSeguimiento.value = data.plazoSeguimiento?.toString() ?? "";
-            previewDosis.value = data.dosis;
-            previewPlaga.value = data.plaga ?? "";
-        }
+        previewMateriaActiva.value = cachedDetail?.materiaActiva ?? "";
+        previewPlazoSeguimiento.value = cachedDetail?.plazoSeguimiento?.toString() ?? "";
+        previewDosis.value = cachedDetail?.dosis ?? "";
+        previewPlaga.value = cachedDetail?.plaga ?? "";
     } catch (err: unknown) {
-
-    } finally {
-
+        console.error('Error al seleccionar producto:', err);
+        previewMateriaActiva.value = "";
+        previewPlazoSeguimiento.value = "";
+        previewDosis.value = "";
+        previewPlaga.value = "";
     }
 }
 
 function onSubmitForm(e: FormSubmitEvent) {
-	if (!e.valid)
-		return;
+    if (!e.valid)
+        return;
 
-	emit("addProduct", e);
-	onResetForm();
-	visible.value = false;
+    // Transformar el valor del producto (id) en objeto ligero con nombre
+    const selectedId: number = e.values.product as number;
+    const selectedLite = productList.value.find(p => p.id === selectedId);
+    const productObj: any = {
+        id: selectedId,
+        nombre: selectedLite?.nombre ?? '',
+        bc_id: selectedLite?.bc_id
+    };
+
+    const payload = {
+        valid: true,
+        values: {
+            maquinaria: e.values.maquinaria,
+            nivel: e.values.nivel,
+            gastosL: e.values.gastosL,
+            product: productObj
+        }
+    } as any;
+
+    emit("addProduct", payload);
+    onResetForm();
+    visible.value = false;
 }
 
 function onResetForm() {
