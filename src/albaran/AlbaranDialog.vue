@@ -374,20 +374,20 @@ async function onClickSocioSiguiente() {
 
 // Función auxiliar para construir el objeto NewAlbaranRequest
 function buildAlbaranData(e: FormSubmitEvent): NewAlbaranRequest {
-	return {
-		general: {
-			anio: new Date().getFullYear(),
-			fincaId: parseInt(e.values.fincaId),
-			socioId: parseInt(e.values.socioId),
-			tecnicoId: e.values.tecnico,
-			fechaEjecucion: e.values.fechaEjecucion.toISOString().split("T")[0],
-			fechaInstrucciones: e.values.fechaInstrucciones.toISOString().split("T")[0],
-			pendiente: e.values.pendiente ?? false,
-			plazoEjecucionDias: e.values.plazoEjecucion,
-			sectoresActivados: e.values.sectorIds ?? [],
-			sinInventario: e.values.sinInventario ?? false,
-			motivoSinInventario: e.values.motivoSinInventario ?? undefined
-		},
+    return {
+        general: {
+            anio: new Date().getFullYear(),
+            fincaId: workaroundGeneralTab.value!.selectedFincaId as number,
+            socioId: workaroundGeneralTab.value!.selectedSocioId as number,
+            tecnicoId: e.values.tecnico,
+            fechaEjecucion: e.values.fechaEjecucion.toISOString().split("T")[0],
+            fechaInstrucciones: e.values.fechaInstrucciones.toISOString().split("T")[0],
+            pendiente: e.values.pendiente ?? false,
+            plazoEjecucionDias: e.values.plazoEjecucion,
+            sectoresActivados: e.values.sectorIds ?? [],
+            sinInventario: e.values.sinInventario ?? false,
+            motivoSinInventario: e.values.motivoSinInventario ?? undefined
+        },
 		productos: dialogState.products.map<AlbaranProductType>(product => ({
 			productoId: product.id,
 			maquinaria: product.maquinaria,
@@ -419,10 +419,17 @@ function buildAlbaranData(e: FormSubmitEvent): NewAlbaranRequest {
 }
 
 async function onSubmitForm(e: FormSubmitEvent) {
-	if (isLoading.value || !e.valid)
-		return;
+    if (isLoading.value || !e.valid)
+        return;
 
-	isLoading.value = true;
+    const socioIdSel = workaroundGeneralTab.value?.selectedSocioId;
+    const fincaIdSel = workaroundGeneralTab.value?.selectedFincaId;
+    if (socioIdSel == null || fincaIdSel == null) {
+        alert("Debe seleccionar un socio y una finca válidos");
+        return;
+    }
+
+    isLoading.value = true;
 
 	// Verificar conexión a internet antes de proceder
 	const hasConnection = await checkConnection();

@@ -430,15 +430,17 @@ function setAlbaranIdField(content: string) {
 }
 
 defineExpose({
-	loadPrimerListado,
-	loadListadoAnterior,
-	loadListadoSiguiente,
-	loadUltimoListado,
-	loadSocioAnterior,
-	loadSocioSiguiente,
-	loadThis,
-	setAlbaranIdField,
-	copyAnterior
+    loadPrimerListado,
+    loadListadoAnterior,
+    loadListadoSiguiente,
+    loadUltimoListado,
+    loadSocioAnterior,
+    loadSocioSiguiente,
+    loadThis,
+    setAlbaranIdField,
+    copyAnterior,
+    selectedSocioId,
+    selectedFincaId
 });
 
 async function onClickFind() {
