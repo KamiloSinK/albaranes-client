@@ -27,7 +27,7 @@ const sinInventarioChecked = computed({
 
 <template>
 	<div class="max-w-lg space-y-4">
-		<div class="flex items-start">
+		<div class="grid items-start">
 			<label class="w-24 text-end font-semibold pr-2 pt-2" for="albaran-observaciones">Observaciones:</label>
 			<div class="flex-1 flex flex-col gap-1">
 				<Textarea class="min-h-48 h-48" name="observaciones" id="albaran-observaciones" fluid/>
