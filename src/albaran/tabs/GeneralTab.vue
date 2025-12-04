@@ -105,24 +105,22 @@ async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
     }
 }
 
-// Función para cargar socios inicialmente
+// Función para cargar socios inicialmente (50 items para el Select)
 async function loadInitialSocios() {
     loadingSocio.value = true;
     try {
         // Offline: solo usar cache
         if (!isOnline.value || !hasSession()) {
-            const cachedSocios = getSocios();
-            sociosList.value = cachedSocios;
+            sociosList.value = getSocios();
             return;
         }
 
-        // Online: cargar primer lote desde API
-        const response = await socios.retrieveSocios({ limit: 100, offset: 0 });
+        // Online: cargar primer lote (50) para el Select
+        const response = await socios.retrieveSocios({ limit: 50, offset: 0 });
         if (response.ok) {
             const data: RetrieveSocioResponse[] = await response.json();
             sociosList.value = data;
         } else {
-            // Fallback a cache si falla API
             sociosList.value = getSocios();
         }
     } catch (err: unknown) {
@@ -133,7 +131,8 @@ async function loadInitialSocios() {
     }
 }
 
-// Función para cargar fincas inicialmente
+
+// Función para cargar fincas inicialmente (50 items para el Select)
 async function loadInitialFincas() {
     loadingFinca.value = true;
     try {
@@ -143,8 +142,8 @@ async function loadInitialFincas() {
             return;
         }
 
-        // Online: cargar primer lote desde API
-        const response = await fincas.retrieveFincas({ limit: 100, offset: 0 });
+        // Online: cargar primer lote (50) para el Select
+        const response = await fincas.retrieveFincas({ limit: 50, offset: 0 });
         if (response.ok) {
             const data: RetrieveFincaResponse[] = await response.json();
             fincasList.value = data;
@@ -159,7 +158,8 @@ async function loadInitialFincas() {
     }
 }
 
-// Función para cargar técnicos inicialmente
+
+// Función para cargar técnicos inicialmente (50 items para el Select)
 async function loadInitialTecnicos() {
     loadingTecnico.value = true;
     try {
@@ -170,8 +170,8 @@ async function loadInitialTecnicos() {
             return;
         }
 
-        // Online: cargar primer lote desde API
-        const response = await tecnicos.retrieveTecnicos({ limit: 100, offset: 0 });
+        // Online: cargar primer lote (50) para el Select
+        const response = await tecnicos.retrieveTecnicos({ limit: 50, offset: 0 });
         if (response.ok) {
             const data: RetrieveTecnicoResponse[] = await response.json();
             tecnicosList.value = data.map(t => ({ ...t, fullname: `${t.nombres} ${t.apellidos}` }));
@@ -187,6 +187,7 @@ async function loadInitialTecnicos() {
         loadingTecnico.value = false;
     }
 }
+
 
 // Lazy load para virtual scroller - carga datos cuando el usuario scrollea
 async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {

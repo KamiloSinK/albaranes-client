@@ -52,7 +52,7 @@ const previewPlazoSeguimiento = ref<string>("");
 const previewDosis = ref<string>("");
 const previewPlaga = ref<string>("");
 
-// Carga inicial de productos
+// Carga inicial de productos (50 items para el Select)
 async function loadInitialProducts() {
     if (productList.value.length > 0) return; // Ya están cargados
 
@@ -64,8 +64,8 @@ async function loadInitialProducts() {
             return;
         }
 
-        // Online: cargar primer lote desde API
-        const response = await productos.retrieveProductos({ limit: 100, offset: 0 });
+        // Online: cargar primer lote (50) para el Select
+        const response = await productos.retrieveProductos({ limit: 50, offset: 0 });
         if (response.ok) {
             const data: RetrieveProductResponse[] = await response.json();
             productList.value = data.map((p) => ({ id: p.id, nombre: p.nombre, bc_id: p.bc_id }));
@@ -79,6 +79,7 @@ async function loadInitialProducts() {
         loadingProduct.value = false;
     }
 }
+
 
 // Lazy load para virtual scroller - carga datos cuando el usuario scrollea
 async function onLazyLoadProducts(e: VirtualScrollerLazyEvent) {

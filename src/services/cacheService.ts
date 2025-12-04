@@ -19,8 +19,10 @@ export interface CacheStats {
 import * as idb from './indexedDb'
 
 class CacheService {
-  private readonly CACHE_DURATION = 1 * 60 * 60 * 1000 // 1 hora en milisegundos
+  private readonly CACHE_DURATION = 2 * 60 * 60 * 1000 // 2 horas en milisegundos
+  private readonly REFRESH_CHECK_INTERVAL = 15 * 60 * 1000 // Verificar cada 15 minutos
   private readonly VERSION = '1.0.0'
+  private refreshIntervalId: ReturnType<typeof setInterval> | null = null
 
   // Nombres de stores en IndexedDB
   private readonly STORES = {
@@ -331,6 +333,92 @@ class CacheService {
     const expirationTime = meta.timestamp + this.CACHE_DURATION
     const timeLeft = expirationTime - now
     return timeLeft > 0 ? Math.floor(timeLeft / (60 * 1000)) : 0
+  }
+
+  // Refrescar todos los caches expirados desde la API (llamar al inicio de la app)
+  async refreshExpiredCaches(): Promise<void> {
+    // Solo refrescar si estamos online
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      console.log('Offline - no se refrescan caches')
+      return
+    }
+
+    const types = ['socios', 'fincas', 'tecnicos', 'productos', 'abonos'] as const
+    
+    for (const type of types) {
+      if (this.needsUpdate(type)) {
+        console.log(`Cache expirado: ${type} - refrescando desde API...`)
+        try {
+          await this.refreshCacheFromApi(type)
+        } catch (err) {
+          console.error(`Error refrescando cache de ${type}:`, err)
+        }
+      } else {
+        console.log(`Cache válido: ${type}`)
+      }
+    }
+  }
+
+  // Refrescar un cache específico desde la API
+  private async refreshCacheFromApi(type: 'socios' | 'fincas' | 'tecnicos' | 'productos' | 'abonos'): Promise<void> {
+    const apiHost = import.meta.env.VITE_API_HOST || ''
+    const endpoints: Record<string, string> = {
+      socios: '/api/socios',
+      fincas: '/api/fincas',
+      tecnicos: '/api/tecnicos',
+      productos: '/api/productos',
+      abonos: '/api/abonos'
+    }
+
+    const response = await fetch(`${apiHost}${endpoints[type]}`, {
+      method: 'GET',
+      mode: 'cors',
+      credentials: 'include'
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      if (Array.isArray(data)) {
+        this.saveToCache(type, data)
+        console.log(`Cache actualizado: ${type} - ${data.length} elementos`)
+      }
+    } else {
+      console.warn(`No se pudo refrescar cache de ${type}: ${response.status}`)
+    }
+  }
+
+  // Iniciar verificación periódica de cache (cada 15 minutos)
+  startPeriodicRefresh(): void {
+    if (this.refreshIntervalId) return // Ya está corriendo
+    
+    console.log('Iniciando verificación periódica de cache (cada 15 min)')
+    this.refreshIntervalId = setInterval(() => {
+      console.log('Verificación periódica de cache...')
+      this.refreshExpiredCaches()
+    }, this.REFRESH_CHECK_INTERVAL)
+
+    // También escuchar cuando el usuario vuelve a estar online
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', this.handleOnline)
+    }
+  }
+
+  // Detener verificación periódica
+  stopPeriodicRefresh(): void {
+    if (this.refreshIntervalId) {
+      clearInterval(this.refreshIntervalId)
+      this.refreshIntervalId = null
+      console.log('Verificación periódica de cache detenida')
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', this.handleOnline)
+    }
+  }
+
+  // Handler para cuando el usuario vuelve a estar online
+  private handleOnline = (): void => {
+    console.log('Conexión restaurada - verificando caches...')
+    this.refreshExpiredCaches()
   }
 }
 

@@ -41,13 +41,8 @@ const {
 // Network status
 const { isOnline } = useNetworkStatus();
 
-// Master data cache
-const { 
-    isLoading: isCacheLoading, 
-    loadMasterData, 
-    cacheStats,
-    clearCache
-} = useMasterDataCache();
+// Master data cache (solo usamos clearCache para logout)
+const { clearCache } = useMasterDataCache();
 
 const dialogVisible = ref({
 	"AlbaranDialog": false,
@@ -134,74 +129,18 @@ if (!sessionCookie) {
 	openDialog("LoginDialog");
 }
 
-// Inicializar cache de datos maestros al montar la aplicación
+// Inicializar offlineStorage al montar la aplicación
+// (cacheService ya se inicializa en main.ts)
 onMounted(async () => {
-  // Inicializar caches desde IndexedDB SIEMPRE, incluso sin sesión, para permitir lectura offline
   try {
-    await Promise.all([
-      cacheService.initialize(),
-      offlineStorage.initialize()
-    ])
-    console.log('IndexedDB inicializado, caches en memoria disponibles')
+    await offlineStorage.initialize()
+    console.log('OfflineStorage inicializado')
   } catch (e) {
-    console.warn('No se pudo inicializar IndexedDB, continuando con flujo estándar', e)
-  }
-
-  // Si no hay sesión activa, no intentamos cargar/actualizar datos maestros desde API
-  if (!sessionCookie) {
-    console.log('No hay sesión activa - se usarán datos del cache si están disponibles')
-    return
-  }
-
-  console.log('Inicializando datos maestros...')
-  console.log('Estado de conexión:', isOnline.value ? 'Conectado' : 'Sin conexión')
-
-  // Obtener estadísticas del cache para logging
-  const stats = cacheStats.value
-  console.log('Estadísticas del cache:', stats)
-
-  try {
-    // loadMasterData() maneja automáticamente:
-    // - Si hay internet: verifica si el cache ha expirado y actualiza solo si es necesario
-    // - Si no hay internet: usa los datos del cache sin intentar actualizar
-    await loadMasterData()
-
-    // Mostrar información sobre el resultado
-    const updatedStats = cacheStats.value
-    const hasData = updatedStats.productos.count > 0 && 
-                   updatedStats.socios.count > 0 && 
-                   updatedStats.fincas.count > 0 && 
-                   updatedStats.tecnicos.count > 0 &&
-                   updatedStats.abonos.count > 0
-
-    if (hasData) {
-      console.log('✅ Datos maestros disponibles:', {
-        productos: updatedStats.productos.count,
-        socios: updatedStats.socios.count,
-        fincas: updatedStats.fincas.count,
-        tecnicos: updatedStats.tecnicos.count,
-        abonos: updatedStats.abonos.count
-      })
-
-      if (isOnline.value) {
-        console.log('📡 Cache verificado y actualizado si era necesario')
-      } else {
-        console.log('💾 Usando datos del cache (sin conexión)')
-      }
-    } else {
-      if (isOnline.value) {
-        console.warn('⚠️ No se pudieron cargar los datos maestros')
-      } else {
-        console.warn('⚠️ Sin conexión y sin datos en cache')
-      }
-    }
-
-  } catch (error) {
-    console.error('❌ Error al inicializar datos maestros:', error)
+    console.warn('No se pudo inicializar offlineStorage', e)
   }
 })
 
-// Al completar el login, inicializar caches e intentar cargar datos maestros según políticas de validez
+// Al completar el login, refrescar caches expirados
 async function onLoginSuccess() {
   // Verificar que ahora existe cookie de sesión
   const cookies = document.cookie.split("; ");
@@ -212,14 +151,10 @@ async function onLoginSuccess() {
   }
 
   try {
-    await Promise.all([
-      cacheService.initialize(),
-      offlineStorage.initialize()
-    ])
-    // Con sesión activa, aplicar política: si no hay datos, cargar; si hay y están expirados, actualizar; si son vigentes, no tocar
-    await loadMasterData(false)
+    // Refrescar caches expirados después del login
+    await cacheService.refreshExpiredCaches()
   } catch (e) {
-    console.error('Error inicializando caches tras login:', e)
+    console.error('Error refrescando caches tras login:', e)
   }
 }
 
@@ -237,11 +172,6 @@ async function onLoginSuccess() {
 			<span>{{ isOnline ? 'Conectado' : 'Sin conexión' }}</span>
 		</div>
 		
-		<!-- Cache loading status -->
-		<div v-if="isCacheLoading" class="status-item loading">
-			<i class="pi pi-spin pi-spinner"></i>
-			<span>Cargando datos...</span>
-		</div>
 		
 		<!-- Sync status -->
 		<div v-if="isSyncing" class="status-item syncing">

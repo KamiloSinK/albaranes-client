@@ -69,7 +69,7 @@ watch(visible, (newValue) => {
 	}
 });
 
-// Carga inicial de abonos
+// Carga inicial de abonos (50 items para el Select)
 async function loadInitialAbonos() {
   if (abonoList.value.length > 0) return;
   loadingAbono.value = true;
@@ -81,8 +81,8 @@ async function loadInitialAbonos() {
       return;
     }
 
-    // Online: cargar primer lote desde API
-    const response = await abonos.retrieveAbonos({ limit: 100, offset: 0 });
+    // Online: cargar primer lote (50) para el Select
+    const response = await abonos.retrieveAbonos({ limit: 50, offset: 0 });
     if (response.ok) {
       const data = await response.json();
       abonoList.value = Array.isArray(data) ? data : [];
@@ -98,6 +98,7 @@ async function loadInitialAbonos() {
     loadingAbono.value = false;
   }
 }
+
 
 // Lazy load para virtual scroller - carga datos cuando el usuario scrollea
 async function onLazyLoadAbonos(e: VirtualScrollerLazyEvent) {

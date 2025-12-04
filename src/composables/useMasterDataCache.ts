@@ -2,380 +2,70 @@
  * Copyright (c) 2025 Coagrisan Servicios S.L. Todos los derechos reservados.
  */
 
-import { ref, computed } from 'vue'
-import { useNetworkStatus } from './useNetworkStatus'
-import { cacheService, type CacheStats } from '@/services/cacheService'
-import * as productos from '@/services/productos'
-import * as socios from '@/services/socios'
-import * as fincas from '@/services/fincas'
-import * as tecnicos from '@/services/tecnicos'
-import * as abonos from '@/services/abonos'
+import { ref } from 'vue'
+import { cacheService } from '@/services/cacheService'
 
+/**
+ * Composable para acceder a los datos maestros desde el cache.
+ * La carga y refresco del cache se maneja en cacheService (main.ts).
+ * Este composable solo proporciona acceso a los datos cacheados.
+ */
 export function useMasterDataCache() {
-  const { isOnline } = useNetworkStatus()
-  const isLoading = ref(false)
-  const isInitialized = ref(false)
-  const loadingProgress = ref({ current: 0, total: 5 })
-  const lastSyncAttempt = ref<Date | null>(null)
-  const syncErrors = ref<string[]>([])
-
-  // Estadísticas del cache
-  const cacheStats = ref<CacheStats>(cacheService.getStats())
-
-  // Computed para verificar si hay datos en cache
-  const hasCachedData = computed(() => {
-    const stats = cacheStats.value
-    return stats.productos.count > 0 && 
-           stats.socios.count > 0 && 
-           stats.fincas.count > 0 && 
-           stats.tecnicos.count > 0 &&
-           stats.abonos.count > 0
-  })
-
-  // Verificar si necesita actualización
-  const needsUpdate = computed(() => {
-    return cacheService.needsUpdate('productos') ||
-           cacheService.needsUpdate('socios') ||
-           cacheService.needsUpdate('fincas') ||
-           cacheService.needsUpdate('tecnicos') ||
-           cacheService.needsUpdate('abonos')
-  })
-
-  // Cargar productos
-  const loadProductos = async (): Promise<boolean> => {
-    try {
-      console.log('Cargando productos...')
-      const response = await productos.retrieveProductos({ limit: 999999 })
-      
-      if (response.ok) {
-        const data = await response.json()
-        // Reducir tamaño del cache: almacenar campos necesarios para el listado e incluir bc_id normalizado
-        const slim = (Array.isArray(data) ? data : []).map((p: any) => ({
-          id: p.id,
-          nombre: p.nombre,
-          bc_id: p.bc_id ?? p.bcId ?? p.bcID ?? p.codigoBc ?? p.codigo_bc ?? undefined
-        }))
-        cacheService.setProductos(slim)
-        return true
-      } else {
-        throw new Error(`Error HTTP ${response.status}`)
-      }
-    } catch (error) {
-      console.error('Error cargando productos:', error)
-      syncErrors.value.push(`Productos: ${error instanceof Error ? error.message : 'Error desconocido'}`)
-      return false
-    }
-  }
-
-  // Cargar socios
-  const loadSocios = async (): Promise<boolean> => {
-    try {
-      console.log('Cargando socios...')
-      const response = await socios.retrieveSocios({ limit: 999999 })
-      
-      if (response.ok) {
-        const data = await response.json()
-        // Asegurar que bc_id (si viene del backend) se conserva en cache
-        const sociosWithBcId = Array.isArray(data)
-          ? data.map((s: any) => ({ ...s, bc_id: s.bc_id ?? s.bcId ?? s.bcID ?? s.codigoBc ?? s.codigo_bc ?? undefined }))
-          : []
-        cacheService.setSocios(sociosWithBcId)
-        return true
-      } else {
-        throw new Error(`Error HTTP ${response.status}`)
-      }
-    } catch (error) {
-      console.error('Error cargando socios:', error)
-      syncErrors.value.push(`Socios: ${error instanceof Error ? error.message : 'Error desconocido'}`)
-      return false
-    }
-  }
-
-  // Cargar fincas
-  const loadFincas = async (): Promise<boolean> => {
-    try {
-      console.log('Cargando fincas...')
-      const response = await fincas.retrieveFincas({ limit: 999999 })
-      
-      if (response.ok) {
-        const data = await response.json()
-        // Asegurar que bc_id (si viene del backend) se conserva y normaliza en cache
-        const fincasWithBcId = Array.isArray(data)
-          ? data.map((f: any) => ({
-              ...f,
-              bc_id: f.bc_id ?? f.bcId ?? f.bcID ?? f.codigoBc ?? f.codigo_bc ?? undefined
-            }))
-          : []
-        cacheService.setFincas(fincasWithBcId)
-        return true
-      } else {
-        throw new Error(`Error HTTP ${response.status}`)
-      }
-    } catch (error) {
-      console.error('Error cargando fincas:', error)
-      syncErrors.value.push(`Fincas: ${error instanceof Error ? error.message : 'Error desconocido'}`)
-      return false
-    }
-  }
-
-  // Cargar técnicos
-  const loadTecnicos = async (): Promise<boolean> => {
-    try {
-      console.log('Cargando técnicos...')
-      const response = await tecnicos.retrieveTecnicos({ limit: 999999 })
-      
-      if (response.ok) {
-        const data = await response.json()
-        cacheService.setTecnicos(data)
-        return true
-      } else {
-        throw new Error(`Error HTTP ${response.status}`)
-      }
-    } catch (error) {
-      console.error('Error cargando técnicos:', error)
-      syncErrors.value.push(`Técnicos: ${error instanceof Error ? error.message : 'Error desconocido'}`)
-      return false
-    }
-  }
-
-  // Cargar abonos
-  const loadAbonos = async (): Promise<boolean> => {
-    try {
-      console.log('Cargando abonos...')
-      const response = await abonos.retrieveAbonos({ limit: 999999 })
-      
-      if (response.ok) {
-        const data = await response.json()
-        cacheService.setAbonos(data)
-        return true
-      } else {
-        throw new Error(`Error HTTP ${response.status}`)
-      }
-    } catch (error) {
-      console.error('Error cargando abonos:', error)
-      syncErrors.value.push(`Abonos: ${error instanceof Error ? error.message : 'Error desconocido'}`)
-      return false
-    }
-  }
-
-  // Función principal para cargar todos los datos maestros
-  const loadMasterData = async (force: boolean = false): Promise<void> => {
-    if (isLoading.value) {
-      console.log('Ya hay una carga en progreso')
-      return
-    }
-
-    // Actualizar estadísticas del cache al inicio
-    cacheStats.value = cacheService.getStats()
-    
-    // Verificar si realmente necesita actualización
-    const needsUpdateCheck = needsUpdate.value
-    const hasCachedDataCheck = hasCachedData.value
-    
-    console.log('📊 Estado del cache:', {
-      needsUpdate: needsUpdateCheck,
-      hasCachedData: hasCachedDataCheck,
-      isOnline: isOnline.value,
-      force: force
-    })
-
-    // Si no hay conexión, usar datos del cache
-    if (!isOnline.value) {
-      if (hasCachedDataCheck) {
-        console.log('💾 Sin conexión - usando datos del cache existente')
-      } else {
-        console.warn('⚠️ Sin conexión y sin datos en cache')
-      }
-      isInitialized.value = true
-      return
-    }
-
-    // Si hay conexión, verificar si necesita actualización
-    if (!force && !needsUpdateCheck && hasCachedDataCheck) {
-      console.log('✅ Cache válido y con datos - no es necesario actualizar')
-      
-      // Mostrar tiempo restante de vigencia
-      const expirationInfo = getExpirationInfo()
-      const minTimeLeft = Math.min(
-        expirationInfo.productos || 0,
-        expirationInfo.socios || 0,
-        expirationInfo.fincas || 0,
-        expirationInfo.tecnicos || 0,
-        expirationInfo.abonos || 0
-      )
-      
-      if (minTimeLeft > 0) {
-        console.log(`⏰ Cache válido por ${minTimeLeft} minutos más`)
-      }
-      
-      isInitialized.value = true
-      return
-    }
-
-    isLoading.value = true
-    loadingProgress.value = { current: 0, total: 5 }
-    syncErrors.value = []
-    lastSyncAttempt.value = new Date()
-
-    // Explicar por qué se está actualizando
-    if (force) {
-      console.log('🔄 Forzando actualización de datos maestros...')
-    } else if (!hasCachedDataCheck) {
-      console.log('📥 Cargando datos maestros por primera vez...')
-    } else if (needsUpdateCheck) {
-      console.log('🔄 Actualizando datos maestros (cache expirado)...')
-    }
-
-    const loadTasks = [
-      { name: 'Productos', task: loadProductos },
-      { name: 'Socios', task: loadSocios },
-      { name: 'Fincas', task: loadFincas },
-      { name: 'Técnicos', task: loadTecnicos },
-      { name: 'Abonos', task: loadAbonos }
-    ]
-
-    let successCount = 0
-    let errorCount = 0
-
-    for (const { name, task } of loadTasks) {
-      loadingProgress.value.current++
-      console.log(`Cargando ${name}... (${loadingProgress.value.current}/${loadingProgress.value.total})`)
-      
-      const success = await task()
-      
-      if (success) {
-        successCount++
-      } else {
-        errorCount++
-      }
-
-      // Pequeña pausa entre cargas para no sobrecargar el servidor
-      await new Promise(resolve => setTimeout(resolve, 200))
-    }
-
-    isLoading.value = false
-    isInitialized.value = true
-    
-    // Actualizar estadísticas
-    cacheStats.value = cacheService.getStats()
-    
-    // Mostrar resultado detallado
-    if (errorCount === 0) {
-      console.log(`✅ Carga completada exitosamente: ${successCount}/${loadTasks.length} servicios`)
-      console.log('📊 Datos cargados:', {
-        productos: cacheStats.value.productos.count,
-        socios: cacheStats.value.socios.count,
-        fincas: cacheStats.value.fincas.count,
-        tecnicos: cacheStats.value.tecnicos.count,
-        abonos: cacheStats.value.abonos.count
-      })
-    } else {
-      console.warn(`⚠️ Carga completada con errores: ${successCount}/${loadTasks.length} exitosos, ${errorCount} errores`)
-      if (syncErrors.value.length > 0) {
-        console.error('Errores encontrados:', syncErrors.value)
-      }
-    }
-
-    // Limpiar caches expirados después de la carga
-    cacheService.clearExpiredCaches()
-  }
-
-  // Obtener datos desde cache o API
-  const getProductos = (): any[] => {
-    const cached = cacheService.getProductos()
-    if (cached) return cached
-    
-    console.warn('No hay productos en cache')
-    return []
-  }
-
   // Versión ligera para selects: id, nombre y bc_id (si disponible)
   type ProductoLite = { id: number; nombre: string; bc_id?: string }
   const productosLiteRef = ref<ProductoLite[]>([])
 
+  // Obtener productos desde cache
+  const getProductos = (): any[] => {
+    return cacheService.getProductos() ?? []
+  }
+
+  // Versión ligera de productos para Selects
   const getProductosLite = (): ProductoLite[] => {
     if (productosLiteRef.value.length > 0) return productosLiteRef.value
 
     const full = cacheService.getProductos()
     if (full && full.length > 0) {
-      // Mapear una sola vez a formato ligero para apertura rápida del Select
       productosLiteRef.value = full.map((p: any) => ({ id: p.id, nombre: p.nombre, bc_id: p.bc_id }))
       return productosLiteRef.value
     }
-    console.warn('No hay productos (lite) en cache')
     return []
   }
 
+  // Obtener socios desde cache
   const getSocios = (): any[] => {
-    const cached = cacheService.getSocios()
-    if (cached) return cached
-    
-    console.warn('No hay socios en cache')
-    return []
+    return cacheService.getSocios() ?? []
   }
 
+  // Obtener fincas desde cache
   const getFincas = (): any[] => {
-    const cached = cacheService.getFincas()
-    if (cached) return cached
-    
-    console.warn('No hay fincas en cache')
-    return []
+    return cacheService.getFincas() ?? []
   }
 
+  // Obtener técnicos desde cache
   const getTecnicos = (): any[] => {
-    const cached = cacheService.getTecnicos()
-    if (cached) return cached
-    
-    console.warn('No hay técnicos en cache')
-    return []
+    return cacheService.getTecnicos() ?? []
   }
 
+  // Obtener abonos desde cache
   const getAbonos = (): any[] => {
-    const cached = cacheService.getAbonos()
-    if (cached) return cached
-    
-    console.warn('No hay abonos en cache')
-    return []
+    return cacheService.getAbonos() ?? []
   }
 
-  // Limpiar todo el cache
+  // Limpiar todo el cache (para logout)
   const clearCache = (): void => {
     cacheService.clearAll()
-    cacheStats.value = cacheService.getStats()
+    productosLiteRef.value = []
     console.log('Cache limpiado')
   }
 
-  // Obtener información de expiración
-  const getExpirationInfo = () => {
-    return {
-      productos: cacheService.getTimeToExpiration('productos'),
-      socios: cacheService.getTimeToExpiration('socios'),
-      fincas: cacheService.getTimeToExpiration('fincas'),
-      tecnicos: cacheService.getTimeToExpiration('tecnicos'),
-      abonos: cacheService.getTimeToExpiration('abonos')
-    }
-  }
-
   return {
-    // Estado
-    isLoading,
-    isInitialized,
-    loadingProgress,
-    lastSyncAttempt,
-    syncErrors,
-    cacheStats,
-    hasCachedData,
-    needsUpdate,
-
-    // Métodos
-    loadMasterData,
     getProductos,
     getProductosLite,
     getSocios,
     getFincas,
     getTecnicos,
     getAbonos,
-    clearCache,
-    getExpirationInfo
+    clearCache
   }
 }
