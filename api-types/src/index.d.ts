@@ -119,10 +119,19 @@ export interface RetrieveSocioResponse {
   bc_id?: string;
 }
 
+export interface RetrieveSectorResponse {
+		id: number;
+		bc_id: string;
+		finca_id: number;
+		sinInventario: boolean;
+	}
+
 export interface RetrieveFincaResponse {
 		id: number;
+		bc_id: string;
 		nombre: string;
 		sectorIds: number[];
+		sectores?: RetrieveSectorResponse[];
 	}
 
 export interface RetrieveTecnicoResponse {
@@ -133,6 +142,7 @@ export interface RetrieveTecnicoResponse {
 
 export interface RetrieveProductResponse {
 		id: number;
+		bc_id?: string;
 		nombre: string;
 		materiaActiva: string;
 		plazoSeguimiento?: number;

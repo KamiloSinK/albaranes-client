@@ -5,12 +5,13 @@
 <script setup lang="ts">
 import {computed, onMounted, ref, watch} from "vue";
 import type {RetrieveAbonoResponse} from "@coa/api-types";
-import type {DialogProps, VirtualScrollerLazyEvent} from "primevue";
+import type {DialogProps, SelectFilterEvent, VirtualScrollerLazyEvent} from "primevue";
 import * as abonos from "@/services/abonos";
 import type {FormResolverOptions, FormSubmitEvent} from "@primevue/forms";
 import { useMasterDataCache } from '@/composables/useMasterDataCache'
 import { useNetworkStatus } from '@/composables/useNetworkStatus'
 import { cacheService } from '@/services/cacheService'
+import { useSession } from '@/composables/useSession'
 
 const visible = defineModel("visible", {type: Boolean, required: true, default: false});
 const emit = defineEmits(["addAbono"]);
@@ -24,6 +25,10 @@ const loadingAbono = ref<boolean>(false);
 // Cache y estado de red
 const { isOnline } = useNetworkStatus()
 const { getAbonos } = useMasterDataCache()
+const { hasSession } = useSession()
+
+// Debounce para búsqueda
+let filterTimeout: ReturnType<typeof setTimeout> | null = null;
 
 // Estado para los campos del formulario
 const selectedAbono = ref<RetrieveAbonoResponse | null>(null);
@@ -64,98 +69,105 @@ watch(visible, (newValue) => {
 	}
 });
 
-// Carga inicial de abonos para que el Select tenga opciones sin esperar al scroll
+// Carga inicial de abonos
 async function loadInitialAbonos() {
   if (abonoList.value.length > 0) return;
   loadingAbono.value = true;
   try {
-    // Pintar rápido desde caché si existe
-    const cached = getAbonos();
-    if (Array.isArray(cached) && cached.length > 0) {
-      abonoList.value = cached;
+    // Offline: solo usar cache
+    if (!isOnline.value) {
+      const cached = getAbonos();
+      abonoList.value = Array.isArray(cached) ? cached : [];
+      return;
     }
 
-    // Con conexión, consultar API siempre (API-first)
-    if (isOnline.value) {
-      const response = await abonos.retrieveAbonos({ limit: 1000 });
-      if (response.ok) {
-        const data = await response.json();
-        abonoList.value = Array.isArray(data) ? data : [];
-      }
+    // Online: cargar primer lote desde API
+    const response = await abonos.retrieveAbonos({ limit: 100, offset: 0 });
+    if (response.ok) {
+      const data = await response.json();
+      abonoList.value = Array.isArray(data) ? data : [];
+    } else {
+      const cached = getAbonos();
+      abonoList.value = Array.isArray(cached) ? cached : [];
     }
   } catch (err) {
     console.error('Error al cargar abonos iniciales:', err);
     const cached = getAbonos();
-    if (Array.isArray(cached) && cached.length > 0) {
-      abonoList.value = cached;
-    }
+    abonoList.value = Array.isArray(cached) ? cached : [];
   } finally {
     loadingAbono.value = false;
   }
 }
 
+// Lazy load para virtual scroller - carga datos cuando el usuario scrollea
 async function onLazyLoadAbonos(e: VirtualScrollerLazyEvent) {
-	if (loadingAbono.value)
-		return;
+    // Si estamos cargando, no hacer nada
+    if (loadingAbono.value) return;
+    
+    // Si el rango solicitado ya está cubierto por los datos cargados, no hacer nada
+    const loadedCount = abonoList.value.length;
+    if (e.last <= loadedCount) {
+        return; // Ya tenemos estos datos
+    }
+    
+    // Si no hay conexión, no cargar más
+    if (!isOnline.value) {
+        return;
+    }
+    
+    loadingAbono.value = true;
+    try {
+        let limit = e.last - e.first;
+        if (limit <= 0) limit = 200;
+        
+        // Cargar desde donde terminan los datos actuales
+        const offset = Math.max(e.first, loadedCount);
+        const response = await abonos.retrieveAbonos({ limit, offset });
+        if (response.ok) {
+            const data: RetrieveAbonoResponse[] = await response.json();
+            const items = [...abonoList.value];
+            for (let i = 0; i < data.length; i++) {
+                items[offset + i] = data[i];
+            }
+            abonoList.value = items;
+        }
+    } catch (err) {
+        console.error('Error en lazy load abonos:', err);
+    } finally {
+        loadingAbono.value = false;
+    }
+}
 
-	loadingAbono.value = true;
-
-	try {
-    // API-first: consultar siempre la API si hay conexión; fallback a caché
-		let limit = e.last - e.first;
-		if (limit <= 0) limit = 200;
-
-		if (!isOnline.value) {
-			const cachedAbonos = getAbonos();
-			const startIndex = e.first;
-			const endIndex = Math.min(e.first + limit, cachedAbonos.length);
-			const paginatedData = cachedAbonos.slice(startIndex, endIndex);
-			const items = [...abonoList.value];
-			for (let i = 0; i < paginatedData.length; i++) items[e.first + i] = paginatedData[i];
-			abonoList.value = items;
-			return;
-		}
-
-		const response = await abonos.retrieveAbonos({ limit, offset: e.first });
-		if (response.ok) {
-			const data: RetrieveAbonoResponse[] = await response.json();
-			const items = [...abonoList.value];
-			for (let i = 0; i < data.length; i++) items[e.first + i] = data[i];
-			abonoList.value = items;
-		} else {
-			const cachedAbonos = getAbonos();
-			const startIndex = e.first;
-			const endIndex = Math.min(e.first + limit, cachedAbonos.length);
-			const paginatedData = cachedAbonos.slice(startIndex, endIndex);
-			const items = [...abonoList.value];
-			for (let i = 0; i < paginatedData.length; i++) items[e.first + i] = paginatedData[i];
-			abonoList.value = items;
-		}
-	} catch (err: unknown) {
-		console.error('Error cargando abonos:', err)
-		
-		// Fallback: usar cache si la llamada a la API falla
-		console.log('Fallback: Usando abonos desde cache debido a error')
-		const cachedAbonos = getAbonos()
-		
-		if (cachedAbonos.length > 0) {
-			let limit = e.last - e.first;
-			if (limit <= 0) limit = 200;
-			
-			const startIndex = e.first
-			const endIndex = Math.min(e.first + limit, cachedAbonos.length)
-			const paginatedData = cachedAbonos.slice(startIndex, endIndex)
-			
-			const items = [...abonoList.value]
-			for (let i = 0; i < paginatedData.length; i++) {
-				items[e.first + i] = paginatedData[i]
-			}
-			
-			abonoList.value = items
-		}
-	} finally {
-		loadingAbono.value = false;
-	}
+// Buscar abonos en API cuando el usuario filtra por nombre
+async function onFilterAbono(e: SelectFilterEvent) {
+    const searchTerm = e.value?.trim() ?? '';
+    
+    // Si el término es muy corto, no buscar en API
+    if (searchTerm.length < 2) return;
+    
+    // Debounce: esperar 300ms antes de buscar
+    if (filterTimeout) clearTimeout(filterTimeout);
+    
+    filterTimeout = setTimeout(async () => {
+        // Solo buscar en API si estamos online y hay sesión
+        if (!isOnline.value || !hasSession()) return;
+        
+        try {
+            const response = await abonos.retrieveAbonos({ contains: searchTerm, limit: 50 });
+            if (response.ok) {
+                const data: RetrieveAbonoResponse[] = await response.json();
+                
+                // Agregar los resultados a la lista si no existen
+                for (const abono of data) {
+                    if (!abonoList.value.some(a => a.id === abono.id)) {
+                        abonoList.value.push(abono);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Error buscando abonos en API:', err);
+        }
+    }, 750);
 }
 
 function formResolver(e: FormResolverOptions): Record<string, any> {
@@ -253,6 +265,7 @@ async function clearForm() {
 								showLoader: true,
 								loading: loadingAbono
 							}"
+							@filter="onFilterAbono"
 							name="abono"
 							optionLabel="nombre"
 							placeholder="Seleccione"

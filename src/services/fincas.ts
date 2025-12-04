@@ -161,3 +161,15 @@ export async function retrieveFinca(id: string | number) {
 		credentials: "include"
 	});
 }
+
+// Buscar finca por bc_id (código de barras)
+export async function retrieveFincaByBcId(bcId: string) {
+	return await fetch(`${import.meta.env.VITE_API_HOST}/fincas/bc/${encodeURIComponent(bcId)}`, {
+		method: "GET",
+		headers: {
+			Accept: "application/json"
+		},
+		mode: "cors",
+		credentials: "include"
+	});
+}

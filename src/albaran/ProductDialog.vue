@@ -6,11 +6,12 @@
 import type {FormResolverOptions, FormSubmitEvent} from "@primevue/forms";
 import {ref, watch} from "vue";
 import type {AlbaranMaquinaria, AlbaranNivel, RetrieveProductResponse} from "@coa/api-types";
-import type {SelectChangeEvent, VirtualScrollerLazyEvent} from "primevue";
+import type {SelectChangeEvent, SelectFilterEvent, VirtualScrollerLazyEvent} from "primevue";
 import * as productos from "@/services/productos";
 import {useMasterDataCache} from "@/composables/useMasterDataCache";
 import {useNetworkStatus} from "@/composables/useNetworkStatus";
 import {cacheService} from "@/services/cacheService";
+import {useSession} from "@/composables/useSession";
 
 const visible = defineModel("visible", {type: Boolean, required: true, default: false});
 const emit = defineEmits(["addProduct"]);
@@ -18,6 +19,10 @@ const emit = defineEmits(["addProduct"]);
 // Cache y estado de red
 const {isOnline} = useNetworkStatus();
 const {getProductos, getProductosLite} = useMasterDataCache();
+const {hasSession} = useSession();
+
+// Debounce para búsqueda
+let filterTimeout: ReturnType<typeof setTimeout> | null = null;
 
 interface SelectOptions<V> {
 	label: string;
@@ -47,107 +52,71 @@ const previewPlazoSeguimiento = ref<string>("");
 const previewDosis = ref<string>("");
 const previewPlaga = ref<string>("");
 
-// Carga inicial rápida desde cache y refresco en segundo plano si aplica
+// Carga inicial de productos
 async function loadInitialProducts() {
     if (productList.value.length > 0) return; // Ya están cargados
 
     loadingProduct.value = true;
     try {
-        // Siempre pintar primero desde cache para abrir el Select rápido
-        const cachedLite = getProductosLite();
-        if (cachedLite.length > 0) {
-            productList.value = cachedLite;
+        // Offline: solo usar cache
+        if (!isOnline.value) {
+            productList.value = getProductosLite();
+            return;
         }
 
-        // Si hay conexión, refrescar siempre en background
-        if (isOnline.value) {
-            void refreshProductos();
+        // Online: cargar primer lote desde API
+        const response = await productos.retrieveProductos({ limit: 100, offset: 0 });
+        if (response.ok) {
+            const data: RetrieveProductResponse[] = await response.json();
+            productList.value = data.map((p) => ({ id: p.id, nombre: p.nombre, bc_id: p.bc_id }));
+        } else {
+            productList.value = getProductosLite();
         }
     } catch (err: unknown) {
         console.error('Error al cargar productos iniciales:', err);
+        productList.value = getProductosLite();
     } finally {
         loadingProduct.value = false;
     }
 }
 
-async function refreshProductos() {
+// Lazy load para virtual scroller - carga datos cuando el usuario scrollea
+async function onLazyLoadProducts(e: VirtualScrollerLazyEvent) {
+    // Si estamos cargando, no hacer nada
+    if (loadingProduct.value) return;
+    
+    // Si el rango solicitado ya está cubierto por los datos cargados, no hacer nada
+    const loadedCount = productList.value.length;
+    if (e.last <= loadedCount) {
+        return; // Ya tenemos estos datos
+    }
+    
+    // Si no hay conexión, no cargar más
+    if (!isOnline.value) {
+        return;
+    }
+    
+    loadingProduct.value = true;
     try {
-        const response = await productos.retrieveProductos({
-            limit: 1000, // lote razonable para refresco sin bloquear UI
-            offset: 0
-        });
+        let limit = e.last - e.first;
+        if (limit <= 0) limit = 200;
+        
+        // Cargar desde donde terminan los datos actuales
+        const offset = Math.max(e.first, loadedCount);
+        const response = await productos.retrieveProductos({ limit, offset });
         if (response.ok) {
             const data: RetrieveProductResponse[] = await response.json();
-            productList.value = data.map((p) => ({ id: p.id, nombre: p.nombre, bc_id: (p as any)?.bc_id ?? (p as any)?.bcId ?? (p as any)?.bcID ?? (p as any)?.codigoBc ?? (p as any)?.codigo_bc }));
-        }
-    } catch (err: unknown) {
-        console.error('Error al refrescar productos desde API:', err);
-    }
-}
-
-async function onLazyLoadProducts(e: VirtualScrollerLazyEvent) {
-	if (loadingProduct.value)
-		return;
-
-	loadingProduct.value = true;
-
-	try {
-    // Si no hay internet, usar cache
-        if (!isOnline.value) {
-            console.log('Sin conexión, cargando productos desde cache para lazy load...');
-            const cachedProducts = getProductosLite();
-            
-            // Simular paginación con los datos del cache
-            const startIndex = e.first;
-            const endIndex = e.last;
-            const paginatedData = cachedProducts.slice(startIndex, endIndex);
-            
             const items = [...productList.value];
-            for (let i = 0; i < paginatedData.length; i++) {
-                items[startIndex + i] = paginatedData[i];
+            for (let i = 0; i < data.length; i++) {
+                items[offset + i] = { id: data[i].id, nombre: data[i].nombre, bc_id: data[i].bc_id };
             }
-            
             productList.value = items;
-            return;
         }
-
-        // Con conexión, consultar siempre a la API
-    let limit = e.last - e.first;
-    // En primera carga algunos navegadores reportan 0; usar un lote pequeño
-    if (limit <= 0)
-        limit = 200;
-
-		const response = await productos.retrieveProductos({
-			limit: limit,
-			offset: e.first
-		});
-
-        const data: RetrieveProductResponse[] = await response.json();
-        const items = [...productList.value];
-        for (let i = 0; i < data.length; i++)
-            items[e.first + i] = { id: data[i].id, nombre: data[i].nombre, bc_id: (data[i] as any)?.bc_id ?? (data[i] as any)?.bcId ?? (data[i] as any)?.bcID ?? (data[i] as any)?.codigoBc ?? (data[i] as any)?.codigo_bc } as ProductoLite;
-
-		productList.value = items;
-	} catch (err: unknown) {
-		console.error("Error al cargar productos:", err);
-		// En caso de error, intentar cargar desde cache
-        console.log('Error en API, intentando cargar productos desde cache...');
-        const cachedProducts = getProductosLite();
-		if (cachedProducts.length > 0) {
-			const startIndex = e.first;
-			const endIndex = e.last;
-			const paginatedData = cachedProducts.slice(startIndex, endIndex);
-			
-			const items = [...productList.value];
-			for (let i = 0; i < paginatedData.length; i++) {
-				items[startIndex + i] = paginatedData[i];
-			}
-			
-			productList.value = items;
-		}
-	} finally {
-		loadingProduct.value = false;
-	}
+    } catch (err) {
+        console.error('Error en lazy load productos:', err);
+    } finally {
+        loadingProduct.value = false;
+    }
 }
 
 function formResolver(e: FormResolverOptions): Record<string, any> {
@@ -196,6 +165,43 @@ async function onSelectProduct(e: SelectChangeEvent) {
         previewDosis.value = "";
         previewPlaga.value = "";
     }
+}
+
+// Buscar productos en API cuando el usuario filtra por nombre
+async function onFilterProduct(e: SelectFilterEvent) {
+    const searchTerm = e.value?.trim() ?? '';
+    
+    // Si el término es muy corto, no buscar en API
+    if (searchTerm.length < 2) return;
+    
+    // Debounce: esperar 300ms antes de buscar
+    if (filterTimeout) clearTimeout(filterTimeout);
+    
+    filterTimeout = setTimeout(async () => {
+        // Solo buscar en API si estamos online y hay sesión
+        if (!isOnline.value || !hasSession()) return;
+        
+        try {
+            const response = await productos.retrieveProductos({ contains: searchTerm, limit: 50 });
+            if (response.ok) {
+                const data: RetrieveProductResponse[] = await response.json();
+                
+                // Agregar los resultados a la lista si no existen
+                for (const producto of data) {
+                    const lite: ProductoLite = { 
+                        id: producto.id, 
+                        nombre: producto.nombre, 
+                        bc_id: producto.bc_id 
+                    };
+                    if (!productList.value.some(p => p.id === producto.id)) {
+                        productList.value.push(lite);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Error buscando productos en API:', err);
+        }
+    }, 750);
 }
 
 function onSubmitForm(e: FormSubmitEvent) {
@@ -299,6 +305,7 @@ watch(visible, (newValue) => {
 								loading: loadingProduct
 							}"
                             @change="onSelectProduct"
+                            @filter="onFilterProduct"
                             name="product"
                             optionLabel="nombre"
                             optionValue="id"
