@@ -376,6 +376,7 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
 						<label for="listado-albaranes-fecha-desde">Desde:</label>
 						<DatePicker
 							name="fechaDesde"
+							dateFormat="yy-mm-dd"
 							inputId="listado-albaranes-fecha-desde"
 							fluid/>
 						<Message
@@ -390,6 +391,7 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
 						<label for="listado-albaranes-fecha-hasta">Hasta:</label>
 						<DatePicker
 							name="fechaHasta"
+							dateFormat="yy-mm-dd"
 							inputId="listado-albaranes-fecha-hasta"
 							fluid/>
 						<Message

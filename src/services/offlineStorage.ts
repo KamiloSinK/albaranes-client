@@ -30,10 +30,12 @@ class OfflineStorageService {
   async initialize(): Promise<void> {
     if (this.initialized && !this.initPromise) return
     if (this.initPromise) return this.initPromise
+    
     this.initPromise = (async () => {
       try {
         // Leer único registro 'all' desde IndexedDB
         const entry = await idb.get('offline_albaranes', 'all')
+        
         if (entry && Array.isArray(entry.data)) {
           this.mem = entry.data as OfflineAlbaran[]
         } else if (Array.isArray(entry)) {
@@ -49,8 +51,12 @@ class OfflineStorageService {
               await idb.set('offline_albaranes', 'all', { data: this.mem, timestamp: Date.now(), version: '1.0.0' })
               localStorage.removeItem(this.STORAGE_KEY)
             }
-          } catch {}
+          } catch (err) {
+            console.error('Error en migración offlineStorage:', err)
+          }
         }
+      } catch (err) {
+        console.error('Error inicializando offlineStorage:', err)
       } finally {
         this.initialized = true
         this.initPromise = null
@@ -61,21 +67,31 @@ class OfflineStorageService {
 
   // Obtener todos los albaranes offline
   getOfflineAlbaranes(): OfflineAlbaran[] {
+    if (!this.initialized) {
+      console.warn('offlineStorage no está inicializado, retornando array vacío')
+      return []
+    }
     return this.mem
   }
 
   // Guardar albaranes offline
-  private saveOfflineAlbaranes(albaranes: OfflineAlbaran[]): void {
+  private async saveOfflineAlbaranes(albaranes: OfflineAlbaran[]): Promise<void> {
     this.mem = albaranes
-    // Persistir en IndexedDB de forma asíncrona
-    idb.set('offline_albaranes', 'all', { data: this.mem, timestamp: Date.now(), version: '1.0.0' })
-      .catch((error) => {
-        console.error('Error al guardar albaranes offline en IndexedDB:', error)
-      })
+    
+    try {
+      // Persistir en IndexedDB
+      await idb.set('offline_albaranes', 'all', { data: this.mem, timestamp: Date.now(), version: '1.0.0' })
+    } catch (error) {
+      console.error('Error al guardar albaranes en IndexedDB:', error)
+      throw error
+    }
   }
 
   // Agregar un nuevo albarán offline
-  addOfflineAlbaran(data: NewAlbaranRequest, type: 'create' | 'update' = 'create', originalAlbaranId?: string): string {
+  async addOfflineAlbaran(data: NewAlbaranRequest, type: 'create' | 'update' = 'create', originalAlbaranId?: string): Promise<string> {
+    // Asegurar que está inicializado antes de guardar
+    await this.initialize()
+    
     const albaranes = this.getOfflineAlbaranes()
     
     const offlineAlbaran: OfflineAlbaran = {
@@ -88,29 +104,29 @@ class OfflineStorageService {
     }
 
     albaranes.push(offlineAlbaran)
-    this.saveOfflineAlbaranes(albaranes)
+    await this.saveOfflineAlbaranes(albaranes)
     
     console.log(`Albarán guardado offline: ${offlineAlbaran.id}`)
     return offlineAlbaran.id
   }
 
   // Marcar un albarán como sincronizado (eliminarlo de la lista)
-  markAsSynced(id: string): void {
+  async markAsSynced(id: string): Promise<void> {
     const albaranes = this.getOfflineAlbaranes()
     const filtered = albaranes.filter(albaran => albaran.id !== id)
-    this.saveOfflineAlbaranes(filtered)
+    await this.saveOfflineAlbaranes(filtered)
     console.log(`Albarán sincronizado y eliminado: ${id}`)
   }
 
   // Incrementar intentos de sincronización
-  incrementAttempts(id: string): void {
+  async incrementAttempts(id: string): Promise<void> {
     const albaranes = this.getOfflineAlbaranes()
     const albaran = albaranes.find(a => a.id === id)
     
     if (albaran) {
       albaran.attempts++
       albaran.lastAttempt = Date.now()
-      this.saveOfflineAlbaranes(albaranes)
+      await this.saveOfflineAlbaranes(albaranes)
     }
   }
 
@@ -157,31 +173,35 @@ class OfflineStorageService {
   }
 
   // Limpiar entradas antiguas (más de 30 días)
-  cleanupOldEntries(): void {
+  async cleanupOldEntries(): Promise<void> {
     const albaranes = this.getOfflineAlbaranes()
     const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000)
     
     const filtered = albaranes.filter(albaran => albaran.timestamp > thirtyDaysAgo)
     
     if (filtered.length !== albaranes.length) {
-      this.saveOfflineAlbaranes(filtered)
+      await this.saveOfflineAlbaranes(filtered)
       console.log(`Limpiados ${albaranes.length - filtered.length} albaranes antiguos`)
     }
   }
 
   // Eliminar un albarán específico (para casos de error irrecuperable)
-  removeOfflineAlbaran(id: string): void {
+  async removeOfflineAlbaran(id: string): Promise<void> {
     const albaranes = this.getOfflineAlbaranes()
     const filtered = albaranes.filter(albaran => albaran.id !== id)
-    this.saveOfflineAlbaranes(filtered)
+    await this.saveOfflineAlbaranes(filtered)
     console.log(`Albarán eliminado: ${id}`)
   }
 
   // Limpiar todo el almacenamiento offline
-  clearAll(): void {
+  async clearAll(): Promise<void> {
     this.mem = []
-    idb.clear('offline_albaranes').catch(() => {})
-    console.log('Almacenamiento offline limpiado')
+    try {
+      await idb.clear('offline_albaranes')
+      console.log('Almacenamiento offline limpiado')
+    } catch (err) {
+      console.error('Error al limpiar IndexedDB:', err)
+    }
   }
 
   // Generar UUID simple

@@ -18,7 +18,7 @@ export function useOfflineSync() {
         const response = await albaranes.newAlbaran(offlineAlbaran.data)
         
         if (response.ok) {
-          offlineStorage.markAsSynced(offlineAlbaran.id)
+          await offlineStorage.markAsSynced(offlineAlbaran.id)
           console.log(`Albarán creado exitosamente: ${offlineAlbaran.id}`)
           return true
         } else {
@@ -34,7 +34,7 @@ export function useOfflineSync() {
         const response = await albaranes.updateAlbaran(offlineAlbaran.originalAlbaranId, updatable)
         
         if (response.ok) {
-          offlineStorage.markAsSynced(offlineAlbaran.id)
+          await offlineStorage.markAsSynced(offlineAlbaran.id)
           console.log(`Albarán actualizado exitosamente: ${offlineAlbaran.id}`)
           return true
         } else {
@@ -45,7 +45,7 @@ export function useOfflineSync() {
       return false
     } catch (error) {
       console.error(`Error sincronizando albarán ${offlineAlbaran.id}:`, error)
-      offlineStorage.incrementAttempts(offlineAlbaran.id)
+      await offlineStorage.incrementAttempts(offlineAlbaran.id)
       
       const errorMsg = `${offlineStorage.getAlbaranInfo(offlineAlbaran)}: ${error instanceof Error ? error.message : 'Error desconocido'}`
       syncErrors.value.push(errorMsg)

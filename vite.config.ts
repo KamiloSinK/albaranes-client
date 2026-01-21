@@ -73,7 +73,7 @@ export default defineConfig({
 			srcDir: "src",
 			filename: "sw.ts",
 			devOptions: {
-				enabled: true,
+				enabled: false, // Deshabilitado en dev para evitar conflictos con HMR
 				type: "module"
 			},
 			injectRegister: "auto",

@@ -76,11 +76,13 @@ class CacheService {
   async initialize(): Promise<void> {
     if (this.initialized && !this.initPromise) return
     if (this.initPromise) return this.initPromise
+    
     this.initPromise = (async () => {
       try {
         for (const type of Object.keys(this.STORES) as (keyof typeof this.STORES)[]) {
           try {
             const entry: CacheEntry<any[]> | undefined = await idb.get(this.STORES[type], 'all')
+            
             if (entry && Array.isArray(entry.data)) {
               // Carga desde IndexedDB: datos grandes permanecen fuera de localStorage
               this.mem[type] = entry.data
@@ -103,10 +105,9 @@ class CacheService {
                     await idb.set(this.STORES[type], 'all', newEntry)
                     this.mem[type] = legacyData
                     this.setMeta(type, newEntry)
-                    console.log(`Migrado cache legacy de ${String(type)} desde localStorage a IndexedDB: ${legacyData.length} elementos`)
                   }
                 } catch (mErr) {
-                  console.warn(`No se pudo migrar cache legacy de ${String(type)} desde localStorage`, mErr)
+                  console.warn(`No se pudo migrar cache legacy de ${String(type)}`, mErr)
                 } finally {
                   // Retirar siempre la clave antigua para evitar payloads grandes en localStorage
                   try { localStorage.removeItem(this.OLD_KEYS[type]) } catch {}
@@ -114,7 +115,7 @@ class CacheService {
               }
             }
           } catch (e) {
-            console.warn(`No se pudo cargar/migrar cache para ${type}`, e)
+            console.error(`Error cargando cache para ${String(type)}:`, e)
           }
         }
       } finally {
@@ -154,6 +155,12 @@ class CacheService {
 
   // Obtener datos del cache (desde memoria si no expirado)
   private getFromCache<T>(type: keyof typeof this.STORES): T[] | null {
+    // Si no está inicializado, devolver array vacío pero advertir
+    if (!this.initialized) {
+      console.warn(`cacheService.getFromCache(${String(type)}) llamado antes de inicializar - retornando []`)
+      return []
+    }
+
     const meta = this.getMeta(type)
     const offline = typeof navigator !== 'undefined' && navigator.onLine === false
 
@@ -201,13 +208,13 @@ class CacheService {
       timestamp: Date.now(),
       version: this.VERSION
     }
+    
     // Actualizar memoria
     this.mem[type] = data as any[]
     this.setMeta(type, entry as CacheEntry<any[]>)
+    
     // Persistir en IndexedDB (async, sin bloquear)
-    idb.set(this.STORES[type], 'all', entry).then(() => {
-      console.log(`Cache IndexedDB actualizado para ${String(type)}: ${data.length} elementos`)
-    }).catch((error) => {
+    idb.set(this.STORES[type], 'all', entry).catch((error) => {
       console.error(`Error al guardar cache ${String(type)} en IndexedDB:`, error)
     })
   }
@@ -339,7 +346,6 @@ class CacheService {
   async refreshExpiredCaches(): Promise<void> {
     // Solo refrescar si estamos online
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      console.log('Offline - no se refrescan caches')
       return
     }
 
@@ -347,14 +353,11 @@ class CacheService {
     
     for (const type of types) {
       if (this.needsUpdate(type)) {
-        console.log(`Cache expirado: ${type} - refrescando desde API...`)
         try {
           await this.refreshCacheFromApi(type)
         } catch (err) {
           console.error(`Error refrescando cache de ${type}:`, err)
         }
-      } else {
-        console.log(`Cache válido: ${type}`)
       }
     }
   }
@@ -363,27 +366,31 @@ class CacheService {
   private async refreshCacheFromApi(type: 'socios' | 'fincas' | 'tecnicos' | 'productos' | 'abonos'): Promise<void> {
     const apiHost = import.meta.env.VITE_API_HOST || ''
     const endpoints: Record<string, string> = {
-      socios: '/api/socios',
-      fincas: '/api/fincas',
-      tecnicos: '/api/tecnicos',
-      productos: '/api/productos',
-      abonos: '/api/abonos'
+      socios: '/socios',
+      fincas: '/fincas',
+      tecnicos: '/tecnicos',
+      productos: '/productos',
+      abonos: '/abonos'
     }
 
-    const response = await fetch(`${apiHost}${endpoints[type]}`, {
-      method: 'GET',
-      mode: 'cors',
-      credentials: 'include'
-    })
+    const url = `${apiHost}${endpoints[type]}`
 
-    if (response.ok) {
-      const data = await response.json()
-      if (Array.isArray(data)) {
-        this.saveToCache(type, data)
-        console.log(`Cache actualizado: ${type} - ${data.length} elementos`)
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'include'
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        
+        if (Array.isArray(data)) {
+          this.saveToCache(type, data)
+        }
       }
-    } else {
-      console.warn(`No se pudo refrescar cache de ${type}: ${response.status}`)
+    } catch (error) {
+      console.error(`Error refrescando cache de ${type}:`, error)
     }
   }
 

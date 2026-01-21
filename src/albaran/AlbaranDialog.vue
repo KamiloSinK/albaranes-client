@@ -441,7 +441,7 @@ async function onSubmitForm(e: FormSubmitEvent) {
 			
 			if (dialogState.originalValues) {
 				// Es una actualización
-				const offlineId = offlineStorage.addOfflineAlbaran(
+				const offlineId = await offlineStorage.addOfflineAlbaran(
 					newData, 
 					'update', 
 					dialogState.originalValues.albaranFullId
@@ -449,7 +449,7 @@ async function onSubmitForm(e: FormSubmitEvent) {
 				alert(`Sin conexión a internet.\n\nEl albarán ha sido guardado localmente y se sincronizará automáticamente cuando se recupere la conexión.\n\nID temporal: ${offlineId}`);
 			} else {
 				// Es un nuevo albarán
-				const offlineId = offlineStorage.addOfflineAlbaran(newData, 'create');
+				const offlineId = await offlineStorage.addOfflineAlbaran(newData, 'create');
 				alert(`Sin conexión a internet.\n\nEl nuevo albarán ha sido guardado localmente y se sincronizará automáticamente cuando se recupere la conexión.\n\nID temporal: ${offlineId}`);
 			}
 			

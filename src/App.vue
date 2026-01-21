@@ -10,6 +10,7 @@ import ListadoAlbaranesDialog from "@/ListadoAlbaranesDialog.vue";
 import ListadoProductosPorSocioDialog from "@/ListadoProductosPorSocioDialog.vue";
 import FicheroCuarentenaDialog from "@/FicheroCuarentenaDialog.vue";
 import GestionInventarioDialog from "@/GestionInventarioDialog.vue";
+import VisitasDialog from "@/VisitasDialog.vue";
 import LoginDialog from "@/LoginDialog.vue";
 import ConfirmDialog from "primevue/confirmdialog";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt.vue";
@@ -50,6 +51,7 @@ const dialogVisible = ref({
 	"ListadoProductosPorSocioDialog": false,
 	"FicheroCuarentenaDialog": false,
 	"GestionInventarioDialog": false,
+	"VisitasDialog": false,
 	"LoginDialog": false
 });
 
@@ -68,6 +70,10 @@ const items = ref<MenuItem[]>([
 			{
 				label: "Listado de Albaranes",
 				command: () => openDialog("ListadoAlbaranesDialog")
+			},
+			{
+				label: "Listado de Visitas",
+				command: () => openDialog("VisitasDialog")
 			},
 			{
 				label: "Generar fichero de cuarentena",
@@ -214,6 +220,7 @@ async function onLoginSuccess() {
 	<ListadoProductosPorSocioDialog v-model:visible="dialogVisible['ListadoProductosPorSocioDialog']" />
 	<FicheroCuarentenaDialog v-model:visible="dialogVisible['FicheroCuarentenaDialog']" />
 	<GestionInventarioDialog v-model:visible="dialogVisible['GestionInventarioDialog']" />
+	<VisitasDialog v-model:visible="dialogVisible['VisitasDialog']" />
     <LoginDialog v-model:visible="dialogVisible['LoginDialog']" @login-success="onLoginSuccess" />
 	
 	<!-- PWA Install Prompt -->

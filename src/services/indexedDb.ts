@@ -37,8 +37,14 @@ export async function get(storeName: string, key: IDBValidKey): Promise<any | un
     const tx = db.transaction(storeName, 'readonly')
     const store = tx.objectStore(storeName)
     const req = store.get(key)
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
+    req.onsuccess = () => {
+      db.close()
+      resolve(req.result)
+    }
+    req.onerror = () => {
+      db.close()
+      reject(req.error)
+    }
   })
 }
 
@@ -48,9 +54,18 @@ export async function set(storeName: string, key: IDBValidKey, value: any): Prom
     const tx = db.transaction(storeName, 'readwrite')
     const store = tx.objectStore(storeName)
     const req = store.put(value, key)
-    tx.oncomplete = () => resolve()
-    tx.onabort = () => reject(tx.error)
-    req.onerror = () => reject(req.error)
+    tx.oncomplete = () => {
+      db.close()
+      resolve()
+    }
+    tx.onabort = () => {
+      db.close()
+      reject(tx.error)
+    }
+    req.onerror = () => {
+      db.close()
+      reject(req.error)
+    }
   })
 }
 
@@ -60,9 +75,18 @@ export async function clear(storeName: string): Promise<void> {
     const tx = db.transaction(storeName, 'readwrite')
     const store = tx.objectStore(storeName)
     const req = store.clear()
-    tx.oncomplete = () => resolve()
-    tx.onabort = () => reject(tx.error)
-    req.onerror = () => reject(req.error)
+    tx.oncomplete = () => {
+      db.close()
+      resolve()
+    }
+    tx.onabort = () => {
+      db.close()
+      reject(tx.error)
+    }
+    req.onerror = () => {
+      db.close()
+      reject(req.error)
+    }
   })
 }
 
@@ -72,7 +96,13 @@ export async function getAll(storeName: string): Promise<any[]> {
     const tx = db.transaction(storeName, 'readonly')
     const store = tx.objectStore(storeName)
     const req = store.getAll()
-    req.onsuccess = () => resolve(req.result || [])
-    req.onerror = () => reject(req.error)
+    req.onsuccess = () => {
+      db.close()
+      resolve(req.result || [])
+    }
+    req.onerror = () => {
+      db.close()
+      reject(req.error)
+    }
   })
 }

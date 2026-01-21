@@ -122,7 +122,7 @@ async function onSubmitForm(e: FormSubmitEvent) {
 				<div class="w-full flex flex-row gap-2">
 					<div class="flex-1 flex flex-col gap-1">
 						<label for="duplicar-albaran-fecha-desde">Desde:</label>
-						<DatePicker inputId="duplicar-albaran-fecha-desde" fluid name="fechaDesde"/>
+						<DatePicker inputId="duplicar-albaran-fecha-desde" dateFormat="yy-mm-dd" fluid name="fechaDesde"/>
 						<Message
 							v-if="$form.fechaDesde?.invalid ?? false"
 							severity="error"
@@ -133,7 +133,7 @@ async function onSubmitForm(e: FormSubmitEvent) {
 					</div>
 					<div class="flex-1 flex flex-col gap-1">
 						<label for="duplicar-albaran-fecha-hasta">Hasta:</label>
-						<DatePicker inputId="duplicar-albaran-fecha-hasta" fluid name="fechaHasta"/>
+						<DatePicker inputId="duplicar-albaran-fecha-hasta" dateFormat="yy-mm-dd" fluid name="fechaHasta"/>
 						<Message
 							v-if="$form.fechaHasta?.invalid ?? false"
 							severity="error"

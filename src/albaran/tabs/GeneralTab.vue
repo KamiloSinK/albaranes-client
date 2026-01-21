@@ -596,6 +596,7 @@ function onChangeFincaId(event: Event) {
     // Limpiar si está vacío
     if (codigo.length === 0) {
         selectedFincaId.value = null;
+        clearSectores();
         return;
     }
     
@@ -615,6 +616,9 @@ function onChangeFincaId(event: Event) {
             changePlaceholderNewItem().then().catch();
         return;
     }
+
+    // No hay coincidencia en cache - limpiar sectores inmediatamente
+    clearSectores();
 
     // Si no se encuentra en cache, aplicar debounce para buscar en API
     if (fincaInputTimeout) clearTimeout(fincaInputTimeout);
@@ -647,12 +651,21 @@ function onChangeFincaId(event: Event) {
                     changePlaceholderNewItem().then().catch();
             } else {
                 selectedFincaId.value = null;
+                // Sectores ya fueron limpiados arriba
             }
         } catch (err) {
             console.error('Error buscando finca por bc_id en API:', err);
             selectedFincaId.value = null;
+            // Sectores ya fueron limpiados arriba
         }
     }, 300);
+}
+
+// Limpiar datos de sectores
+function clearSectores() {
+    props.formSlot.sectorIdsPreview.value = "";
+    props.formSlot.sectorIds.value = [];
+    dialogState.value.selectedFincaSectorIds = [];
 }
 
 function onClickCheckAll() {
@@ -893,7 +906,7 @@ onMounted(() => {
 		<div class="flex items-center">
 			<label class="w-48 text-end font-semibold pr-2" for="albaran-fecha-instrucciones">Fecha instrucciones:</label>
 			<div class="flex-1 flex flex-col gap-1">
-				<DatePicker name="fechaInstrucciones" showIcon fluid iconDisplay="input" inputId="albaran-fecha-instrucciones" />
+				<DatePicker name="fechaInstrucciones" dateFormat="yy-mm-dd" showIcon fluid iconDisplay="input" inputId="albaran-fecha-instrucciones" />
 				<Message
 					v-if="props.formSlot.fechaInstrucciones?.invalid ?? false"
 					severity="error"
@@ -906,7 +919,7 @@ onMounted(() => {
 		<div class="flex items-center">
 			<label class="w-48 text-end font-semibold pr-2" for="albaran-fecha-ejecucion">Fecha de ejecución:</label>
 			<div class="flex-1 flex flex-col gap-1 mr-2">
-				<DatePicker name="fechaEjecucion" showIcon fluid iconDisplay="input" inputId="albaran-fecha-ejecucion" />
+				<DatePicker name="fechaEjecucion" dateFormat="yy-mm-dd" showIcon fluid iconDisplay="input" inputId="albaran-fecha-ejecucion" />
 				<Message
 					v-if="props.formSlot.fechaEjecucion?.invalid ?? false"
 					severity="error"

@@ -161,6 +161,20 @@ export interface GenerarCuarentenaQueryParams {
 		filename?: string;
 	}
 
+export interface RetrieveVisitasQueryParams {
+		fecha_inicio: string;
+		fecha_fin: string;
+	}
+
+export interface RetrieveVisitaResponse {
+		albaranFullId: string;
+		fecha: string;
+		hora: string;
+		fincaNombre: string;
+		tecnicoNombre: string;
+		diagnosticoCorto: string;
+	}
+
 export type UpdateAlbaranRequest = DeepPartial<Omit<NewAlbaranRequest, "productos" | "abono">>;
 
 export type NewAlbaranProductRequest = AlbaranProductType[];
