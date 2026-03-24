@@ -10,6 +10,7 @@ import * as socios from "@/services/socios";
 import * as fincas from "@/services/fincas";
 import * as tecnicos from "@/services/tecnicos";
 import { useMasterDataCache } from "@/composables/useMasterDataCache";
+import { useLazySelect } from "@/composables/useLazySelect";
 import { useNetworkStatus } from "@/composables/useNetworkStatus";
 import { useSession } from "@/composables/useSession";
 import { cacheService } from "@/services/cacheService";
@@ -40,13 +41,19 @@ interface TecnicoOption extends RetrieveTecnicoResponse {
 }
 
 const loadingAlbaran = ref<boolean>(false);
-const loadingSocio = ref<boolean>(false);
-const loadingFinca = ref<boolean>(false);
-const loadingTecnico = ref<boolean>(false);
 
-const sociosList = ref<RetrieveSocioResponse[]>([]);
-const fincasList = ref<RetrieveFincaResponse[]>([]);
-const tecnicosList = ref<TecnicoOption[]>([]);
+// Lazy loading para Selects paginados
+const sociosLazy = useLazySelect<RetrieveSocioResponse>();
+const sociosList = sociosLazy.items;
+const loadingSocio = sociosLazy.loading;
+
+const fincasLazy = useLazySelect<RetrieveFincaResponse>();
+const fincasList = fincasLazy.items;
+const loadingFinca = fincasLazy.loading;
+
+const tecnicosLazy = useLazySelect<TecnicoOption>();
+const tecnicosList = tecnicosLazy.items;
+const loadingTecnico = tecnicosLazy.loading;
 
 // Debounce para búsquedas
 let socioInputTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -66,208 +73,56 @@ const { hasSession } = useSession();
 // Flag para evitar múltiples cargas iniciales
 let initialLoadDone = false;
 
-// Lazy load para virtual scroller - carga datos cuando el usuario scrollea
+// Mapper para técnicos: añade fullname
+const mapTecnico = (t: RetrieveTecnicoResponse): TecnicoOption => ({ ...t, fullname: `${t.nombres} ${t.apellidos}` });
+
+// Lazy load handlers para virtual scroller
 async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
-    // Si estamos cargando, no hacer nada
-    if (loadingSocio.value) return;
-    
-    // Si el rango solicitado ya está cubierto por los datos cargados, no hacer nada
-    const loadedCount = sociosList.value.length;
-    if (e.last <= loadedCount) {
-        return; // Ya tenemos estos datos
-    }
-    
-    // Si no hay conexión o sesión, no cargar más
-    if (!isOnline.value || !hasSession()) {
-        return;
-    }
-    
-    loadingSocio.value = true;
-    try {
-        let limit = e.last - e.first;
-        if (limit <= 0) limit = 200;
-        
-        // Cargar desde donde terminan los datos actuales
-        const offset = Math.max(e.first, loadedCount);
-        const response = await socios.retrieveSocios({ limit, offset });
-        if (response.ok) {
-            const data: RetrieveSocioResponse[] = await response.json();
-            const items = [...sociosList.value];
-            for (let i = 0; i < data.length; i++) {
-                items[offset + i] = data[i];
-            }
-            sociosList.value = items;
-        }
-    } catch (err) {
-        console.error('Error en lazy load socios:', err);
-    } finally {
-        loadingSocio.value = false;
-    }
+    await sociosLazy.onLazyLoad(e,
+        (p) => socios.retrieveSocios(p),
+        { isOnline: isOnline.value, hasSession: hasSession() }
+    );
 }
 
-// Función para cargar socios inicialmente (50 items para el Select)
-async function loadInitialSocios() {
-    loadingSocio.value = true;
-    try {
-        // Offline: solo usar cache
-        if (!isOnline.value || !hasSession()) {
-            sociosList.value = getSocios();
-            return;
-        }
-
-        // Online: cargar primer lote (50) para el Select
-        const response = await socios.retrieveSocios({ limit: 50, offset: 0 });
-        if (response.ok) {
-            const data: RetrieveSocioResponse[] = await response.json();
-            sociosList.value = data;
-        } else {
-            sociosList.value = getSocios();
-        }
-    } catch (err: unknown) {
-        console.error("Error al cargar socios iniciales:", err);
-        sociosList.value = getSocios();
-    } finally {
-        loadingSocio.value = false;
-    }
-}
-
-
-// Función para cargar fincas inicialmente (50 items para el Select)
-async function loadInitialFincas() {
-    loadingFinca.value = true;
-    try {
-        // Offline: solo usar cache
-        if (!isOnline.value || !hasSession()) {
-            fincasList.value = getFincas();
-            return;
-        }
-
-        // Online: cargar primer lote (50) para el Select
-        const response = await fincas.retrieveFincas({ limit: 50, offset: 0 });
-        if (response.ok) {
-            const data: RetrieveFincaResponse[] = await response.json();
-            fincasList.value = data;
-        } else {
-            fincasList.value = getFincas();
-        }
-    } catch (err: unknown) {
-        console.error("Error al cargar fincas iniciales:", err);
-        fincasList.value = getFincas();
-    } finally {
-        loadingFinca.value = false;
-    }
-}
-
-
-// Función para cargar técnicos inicialmente (50 items para el Select)
-async function loadInitialTecnicos() {
-    loadingTecnico.value = true;
-    try {
-        // Offline: solo usar cache
-        if (!isOnline.value || !hasSession()) {
-            const cached = getTecnicos();
-            tecnicosList.value = cached.map(t => ({ ...t, fullname: `${t.nombres} ${t.apellidos}` }));
-            return;
-        }
-
-        // Online: cargar primer lote (50) para el Select
-        const response = await tecnicos.retrieveTecnicos({ limit: 50, offset: 0 });
-        if (response.ok) {
-            const data: RetrieveTecnicoResponse[] = await response.json();
-            tecnicosList.value = data.map(t => ({ ...t, fullname: `${t.nombres} ${t.apellidos}` }));
-        } else {
-            const cached = getTecnicos();
-            tecnicosList.value = cached.map(t => ({ ...t, fullname: `${t.nombres} ${t.apellidos}` }));
-        }
-    } catch (err: unknown) {
-        console.error("Error al cargar técnicos iniciales:", err);
-        const cached = getTecnicos();
-        tecnicosList.value = cached.map(t => ({ ...t, fullname: `${t.nombres} ${t.apellidos}` }));
-    } finally {
-        loadingTecnico.value = false;
-    }
-}
-
-
-// Lazy load para virtual scroller - carga datos cuando el usuario scrollea
 async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
-    // Si estamos cargando, no hacer nada
-    if (loadingFinca.value) return;
-    
-    // Si el rango solicitado ya está cubierto por los datos cargados, no hacer nada
-    const loadedCount = fincasList.value.length;
-    if (e.last <= loadedCount) {
-        return; // Ya tenemos estos datos
-    }
-    
-    // Si no hay conexión o sesión, no cargar más
-    if (!isOnline.value || !hasSession()) {
-        return;
-    }
-    
-    loadingFinca.value = true;
-    try {
-        let limit = e.last - e.first;
-        if (limit <= 0) limit = 200;
-        
-        // Cargar desde donde terminan los datos actuales
-        const offset = Math.max(e.first, loadedCount);
-        const response = await fincas.retrieveFincas({ limit, offset });
-        if (response.ok) {
-            const data: RetrieveFincaResponse[] = await response.json();
-            const items = [...fincasList.value];
-            for (let i = 0; i < data.length; i++) {
-                items[offset + i] = data[i];
-            }
-            fincasList.value = items;
-        }
-    } catch (err) {
-        console.error('Error en lazy load fincas:', err);
-    } finally {
-        loadingFinca.value = false;
-    }
+    await fincasLazy.onLazyLoad(e,
+        (p) => fincas.retrieveFincas(p),
+        { isOnline: isOnline.value, hasSession: hasSession() }
+    );
 }
 
-// Lazy load para virtual scroller - carga datos cuando el usuario scrollea
 async function onLazyLoadTecnicos(e: VirtualScrollerLazyEvent) {
-    // Si estamos cargando, no hacer nada
-    if (loadingTecnico.value) return;
-    
-    // Si el rango solicitado ya está cubierto por los datos cargados, no hacer nada
-    const loadedCount = tecnicosList.value.length;
-    if (e.last <= loadedCount) {
-        return; // Ya tenemos estos datos
-    }
-    
-    // Si no hay conexión o sesión, no cargar más
-    if (!isOnline.value || !hasSession()) {
-        return;
-    }
-    
-    loadingTecnico.value = true;
-    try {
-        let limit = e.last - e.first;
-        if (limit <= 0) limit = 200;
-        
-        // Cargar desde donde terminan los datos actuales
-        const offset = Math.max(e.first, loadedCount);
-        const response = await tecnicos.retrieveTecnicos({ limit, offset });
-        if (response.ok) {
-            const data: RetrieveTecnicoResponse[] = await response.json();
-            const items = [...tecnicosList.value];
-            for (let i = 0; i < data.length; i++) {
-                items[offset + i] = {
-                    ...data[i],
-                    fullname: `${data[i].nombres} ${data[i].apellidos}`
-                };
-            }
-            tecnicosList.value = items;
+    await tecnicosLazy.onLazyLoad(e,
+        (p) => tecnicos.retrieveTecnicos(p),
+        { mapFn: mapTecnico, isOnline: isOnline.value, hasSession: hasSession() }
+    );
+}
+
+// Carga inicial (primera página de 50 elementos)
+async function loadInitialSocios() {
+    await sociosLazy.loadInitial(
+        (p) => socios.retrieveSocios(p),
+        { cacheFn: getSocios, isOnline: isOnline.value, hasSession: hasSession() }
+    );
+}
+
+async function loadInitialFincas() {
+    await fincasLazy.loadInitial(
+        (p) => fincas.retrieveFincas(p),
+        { cacheFn: getFincas, isOnline: isOnline.value, hasSession: hasSession() }
+    );
+}
+
+async function loadInitialTecnicos() {
+    await tecnicosLazy.loadInitial(
+        (p) => tecnicos.retrieveTecnicos(p),
+        {
+            cacheFn: () => getTecnicos().map(mapTecnico),
+            mapFn: mapTecnico,
+            isOnline: isOnline.value,
+            hasSession: hasSession()
         }
-    } catch (err) {
-        console.error('Error en lazy load tecnicos:', err);
-    } finally {
-        loadingTecnico.value = false;
-    }
+    );
 }
 
 async function copyAnterior() {
@@ -694,12 +549,7 @@ function onFilterSocio(e: SelectFilterEvent) {
             if (response.ok) {
                 const data: RetrieveSocioResponse[] = await response.json();
                 
-                // Agregar los resultados a la lista si no existen
-                for (const socio of data) {
-                    if (!sociosList.value.some(s => s.id === socio.id)) {
-                        sociosList.value.push(socio);
-                    }
-                }
+                sociosLazy.addItems(data);
             }
         } catch (err) {
             console.error('Error buscando socios en API:', err);
@@ -726,12 +576,7 @@ function onFilterFinca(e: SelectFilterEvent) {
             if (response.ok) {
                 const data: RetrieveFincaResponse[] = await response.json();
                 
-                // Agregar los resultados a la lista si no existen
-                for (const finca of data) {
-                    if (!fincasList.value.some(f => f.id === finca.id)) {
-                        fincasList.value.push(finca);
-                    }
-                }
+                fincasLazy.addItems(data);
             }
         } catch (err) {
             console.error('Error buscando fincas en API:', err);

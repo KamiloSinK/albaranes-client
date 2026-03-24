@@ -9,6 +9,7 @@ import type {AlbaranMaquinaria, AlbaranNivel, RetrieveProductResponse} from "@co
 import type {SelectChangeEvent, SelectFilterEvent, VirtualScrollerLazyEvent} from "primevue";
 import * as productos from "@/services/productos";
 import {useMasterDataCache} from "@/composables/useMasterDataCache";
+import {useLazySelect} from "@/composables/useLazySelect";
 import {useNetworkStatus} from "@/composables/useNetworkStatus";
 import {cacheService} from "@/services/cacheService";
 import {useSession} from "@/composables/useSession";
@@ -44,8 +45,10 @@ const nivelOptions = ref<SelectOptions<AlbaranNivel>[]>([
 ]);
 
 type ProductoLite = { id: number; nombre: string; bc_id?: string }
-const productList = ref<ProductoLite[]>([]);
-const loadingProduct = ref<boolean>(false);
+const productosLazy = useLazySelect<ProductoLite>();
+const productList = productosLazy.items;
+const loadingProduct = productosLazy.loading;
+const mapProductoLite = (p: any): ProductoLite => ({ id: p.id, nombre: p.nombre, bc_id: p.bc_id });
 
 const previewMateriaActiva = ref<string>("");
 const previewPlazoSeguimiento = ref<string>("");
@@ -55,69 +58,18 @@ const previewPlaga = ref<string>("");
 // Carga inicial de productos (50 items para el Select)
 async function loadInitialProducts() {
     if (productList.value.length > 0) return; // Ya están cargados
-
-    loadingProduct.value = true;
-    try {
-        // Offline: solo usar cache
-        if (!isOnline.value) {
-            productList.value = getProductosLite();
-            return;
-        }
-
-        // Online: cargar primer lote (50) para el Select
-        const response = await productos.retrieveProductos({ limit: 50, offset: 0 });
-        if (response.ok) {
-            const data: RetrieveProductResponse[] = await response.json();
-            productList.value = data.map((p) => ({ id: p.id, nombre: p.nombre, bc_id: p.bc_id }));
-        } else {
-            productList.value = getProductosLite();
-        }
-    } catch (err: unknown) {
-        console.error('Error al cargar productos iniciales:', err);
-        productList.value = getProductosLite();
-    } finally {
-        loadingProduct.value = false;
-    }
+    await productosLazy.loadInitial(
+        (p) => productos.retrieveProductos(p),
+        { cacheFn: getProductosLite, mapFn: mapProductoLite, isOnline: isOnline.value, hasSession: hasSession() }
+    );
 }
-
 
 // Lazy load para virtual scroller - carga datos cuando el usuario scrollea
 async function onLazyLoadProducts(e: VirtualScrollerLazyEvent) {
-    // Si estamos cargando, no hacer nada
-    if (loadingProduct.value) return;
-    
-    // Si el rango solicitado ya está cubierto por los datos cargados, no hacer nada
-    const loadedCount = productList.value.length;
-    if (e.last <= loadedCount) {
-        return; // Ya tenemos estos datos
-    }
-    
-    // Si no hay conexión, no cargar más
-    if (!isOnline.value) {
-        return;
-    }
-    
-    loadingProduct.value = true;
-    try {
-        let limit = e.last - e.first;
-        if (limit <= 0) limit = 200;
-        
-        // Cargar desde donde terminan los datos actuales
-        const offset = Math.max(e.first, loadedCount);
-        const response = await productos.retrieveProductos({ limit, offset });
-        if (response.ok) {
-            const data: RetrieveProductResponse[] = await response.json();
-            const items = [...productList.value];
-            for (let i = 0; i < data.length; i++) {
-                items[offset + i] = { id: data[i].id, nombre: data[i].nombre, bc_id: data[i].bc_id };
-            }
-            productList.value = items;
-        }
-    } catch (err) {
-        console.error('Error en lazy load productos:', err);
-    } finally {
-        loadingProduct.value = false;
-    }
+    await productosLazy.onLazyLoad(e,
+        (p) => productos.retrieveProductos(p),
+        { mapFn: mapProductoLite, isOnline: isOnline.value, hasSession: hasSession() }
+    );
 }
 
 function formResolver(e: FormResolverOptions): Record<string, any> {
@@ -187,17 +139,7 @@ async function onFilterProduct(e: SelectFilterEvent) {
             if (response.ok) {
                 const data: RetrieveProductResponse[] = await response.json();
                 
-                // Agregar los resultados a la lista si no existen
-                for (const producto of data) {
-                    const lite: ProductoLite = { 
-                        id: producto.id, 
-                        nombre: producto.nombre, 
-                        bc_id: producto.bc_id 
-                    };
-                    if (!productList.value.some(p => p.id === producto.id)) {
-                        productList.value.push(lite);
-                    }
-                }
+                productosLazy.addItems(data.map(mapProductoLite));
             }
         } catch (err) {
             console.error('Error buscando productos en API:', err);

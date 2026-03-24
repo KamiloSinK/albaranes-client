@@ -11,6 +11,7 @@ import {Button, type VirtualScrollerLazyEvent} from "primevue";
 import * as socios from "@/services/socios.ts";
 import * as fincas from "@/services/fincas.ts";
 import { useMasterDataCache } from "@/composables/useMasterDataCache";
+import { useLazySelect } from "@/composables/useLazySelect";
 import { useNetworkStatus } from "@/composables/useNetworkStatus";
 import { useSession } from "@/composables/useSession";
 import { cacheService } from "@/services/cacheService";
@@ -22,53 +23,31 @@ const { isOnline } = useNetworkStatus();
 const { hasSession } = useSession();
 const { getSocios, getFincas } = useMasterDataCache();
 
-const sociosList = ref<RetrieveSocioResponse[]>([]);
-const fincasList = ref<RetrieveFincaResponse[]>([]);
-const loadingSocio = ref<boolean>(false);
-const loadingFinca = ref<boolean>(false);
+// Lazy loading para Selects paginados
+const sociosLazy = useLazySelect<RetrieveSocioResponse>();
+const sociosList = sociosLazy.items;
+const loadingSocio = sociosLazy.loading;
+
+const fincasLazy = useLazySelect<RetrieveFincaResponse>();
+const fincasList = fincasLazy.items;
+const loadingFinca = fincasLazy.loading;
 const isLoading = ref<boolean>(false);
 const mode = ref<"preview" | "print">("preview");
 // v-model locales para mantener el comportamiento coherente con otros Select
 const selectedSocioId = ref<number | null>(null);
 const selectedFincaId = ref<number | null>(null);
 
-// Inicializar listas con datos del cache al montar el componente
+// Inicializar listas al montar el componente
 onMounted(() => {
-  const cachedSocios = getSocios();
-  if (cachedSocios.length > 0) {
-    sociosList.value = cachedSocios;
-    console.log(`Cargados ${cachedSocios.length} socios desde cache (Listado)`);
-  }
-
-  const cachedFincas = getFincas();
-  if (cachedFincas.length > 0) {
-    fincasList.value = cachedFincas;
-    console.log(`Cargadas ${cachedFincas.length} fincas desde cache (Listado)`);
-  }
-
-  // Si no hay datos aún, cargar un lote inicial para habilitar filtro inmediato
-  if (sociosList.value.length === 0) {
-    loadInitialSocios().then().catch();
-  }
-  if (fincasList.value.length === 0) {
-    loadInitialFincas().then().catch();
-  }
+  loadInitialSocios();
+  loadInitialFincas();
 });
 
 // Repoblar al abrir el diálogo y re-evaluar según conectividad
 watch(visible, (isOpen) => {
   if (isOpen) {
-    // Pintar rápido desde cache
-    const cachedSocios = getSocios();
-    if (cachedSocios.length > 0) sociosList.value = cachedSocios;
-    const cachedFincas = getFincas();
-    if (cachedFincas.length > 0) fincasList.value = cachedFincas;
-
-    // Si hay conexión y sesión, refrescar en background
-    if (isOnline.value && hasSession()) {
-      void loadInitialSocios();
-      void loadInitialFincas();
-    }
+    loadInitialSocios();
+    loadInitialFincas();
   }
 });
 
@@ -76,15 +55,15 @@ watch(visible, (isOpen) => {
 watch(isOnline, (online) => {
   if (!visible.value) return;
   if (online && hasSession()) {
-    // Con conexión: refrescar desde API en background
     void loadInitialSocios();
     void loadInitialFincas();
   } else {
-    // Sin conexión: asegurar que los Selects muestren cache
-    const cachedSocios = getSocios();
-    if (cachedSocios.length > 0) sociosList.value = cachedSocios;
-    const cachedFincas = getFincas();
-    if (cachedFincas.length > 0) fincasList.value = cachedFincas;
+    sociosLazy.reset();
+    sociosList.value = getSocios();
+    sociosLazy.hasMore.value = false;
+    fincasLazy.reset();
+    fincasList.value = getFincas();
+    fincasLazy.hasMore.value = false;
   }
 });
 
@@ -179,159 +158,34 @@ async function onSubmitForm(e: FormSubmitEvent) {
 
 function onHideDialog() {}
 
-// Cargar inicialmente un lote de opciones para que el Select funcione sin esperar scroll
+// Carga inicial (primera página de 50 elementos)
 async function loadInitialSocios() {
-  loadingSocio.value = true;
-  try {
-    // Pintar rápido desde caché si existe
-    const cached = getSocios();
-    if (cached.length > 0) sociosList.value = cached;
-
-    // Con conexión y sesión, consultar API
-    if (isOnline.value && hasSession()) {
-      const response = await socios.retrieveSocios({ limit: 999999, offset: 0 });
-      if (response.ok) sociosList.value = await response.json();
-    }
-  } catch (err) {
-    console.error('Error al cargar socios iniciales:', err);
-    const cached = getSocios();
-    if (cached.length > 0) sociosList.value = cached;
-  } finally {
-    loadingSocio.value = false;
-  }
+  await sociosLazy.loadInitial(
+    (p) => socios.retrieveSocios(p),
+    { cacheFn: getSocios, isOnline: isOnline.value, hasSession: hasSession() }
+  );
 }
 
 async function loadInitialFincas() {
-  loadingFinca.value = true;
-  try {
-    // Pintar rápido desde caché si existe
-    const cached = getFincas();
-    if (cached.length > 0) fincasList.value = cached;
-
-    // Con conexión y sesión, consultar API
-    if (isOnline.value && hasSession()) {
-      const response = await fincas.retrieveFincas({ limit: 999999, offset: 0 });
-      if (response.ok) fincasList.value = await response.json();
-    }
-  } catch (err) {
-    console.error('Error al cargar fincas iniciales:', err);
-    const cached = getFincas();
-    if (cached.length > 0) fincasList.value = cached;
-  } finally {
-    loadingFinca.value = false;
-  }
+  await fincasLazy.loadInitial(
+    (p) => fincas.retrieveFincas(p),
+    { cacheFn: getFincas, isOnline: isOnline.value, hasSession: hasSession() }
+  );
 }
 
+// Lazy load handlers para virtual scroller
 async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
-	loadingSocio.value = true;
-
-	try {
-    // API-first: consultar siempre la API si hay conexión; fallback a caché
-		let limit = e.last - e.first;
-		if (limit <= 0) limit = 200;
-
-    if (!isOnline.value || !hasSession()) {
-      const cachedSocios = getSocios();
-      const startIndex = e.first;
-      const endIndex = e.last;
-      const paginatedData = cachedSocios.slice(startIndex, endIndex);
-      const items = [...sociosList.value];
-			for (let i = 0; i < paginatedData.length; i++) items[startIndex + i] = paginatedData[i];
-			sociosList.value = items;
-			return;
-		}
-
-		const response = await socios.retrieveSocios({ limit, offset: e.first });
-		if (response.ok) {
-			const data: RetrieveSocioResponse[] = await response.json();
-			const items = [...sociosList.value];
-			for (let i = 0; i < data.length; i++) items[e.first + i] = data[i];
-			sociosList.value = items;
-		} else {
-			const cachedSocios = getSocios();
-			const startIndex = e.first;
-			const endIndex = e.last;
-			const paginatedData = cachedSocios.slice(startIndex, endIndex);
-			const items = [...sociosList.value];
-			for (let i = 0; i < paginatedData.length; i++) items[startIndex + i] = paginatedData[i];
-			sociosList.value = items;
-		}
-	} catch (err: unknown) {
-		console.error("Error al cargar socios:", err);
-		// En caso de error, intentar cargar desde cache
-		console.log('Error en API, intentando cargar socios desde cache...');
-		const cachedSocios = getSocios();
-		if (cachedSocios.length > 0) {
-			const startIndex = e.first;
-			const endIndex = e.last;
-			const paginatedData = cachedSocios.slice(startIndex, endIndex);
-			
-			const items = [...sociosList.value];
-			for (let i = 0; i < paginatedData.length; i++) {
-				items[startIndex + i] = paginatedData[i];
-			}
-			
-			sociosList.value = items;
-		}
-	} finally {
-		loadingSocio.value = false;
-	}
+  await sociosLazy.onLazyLoad(e,
+    (p) => socios.retrieveSocios(p),
+    { isOnline: isOnline.value, hasSession: hasSession() }
+  );
 }
 
 async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
-	loadingFinca.value = true;
-
-	try {
-    // API-first: consultar siempre la API si hay conexión; fallback a caché
-		let limit = e.last - e.first;
-		if (limit <= 0) limit = 200;
-
-    if (!isOnline.value || !hasSession()) {
-      const cachedFincas = getFincas();
-      const startIndex = e.first;
-      const endIndex = e.last;
-      const paginatedData = cachedFincas.slice(startIndex, endIndex);
-      const items = [...fincasList.value];
-			for (let i = 0; i < paginatedData.length; i++) items[startIndex + i] = paginatedData[i];
-			fincasList.value = items;
-			return;
-		}
-
-		const response = await fincas.retrieveFincas({ limit, offset: e.first });
-		if (response.ok) {
-			const data: RetrieveFincaResponse[] = await response.json();
-			const items = [...fincasList.value];
-			for (let i = 0; i < data.length; i++) items[e.first + i] = data[i];
-			fincasList.value = items;
-		} else {
-			const cachedFincas = getFincas();
-			const startIndex = e.first;
-			const endIndex = e.last;
-			const paginatedData = cachedFincas.slice(startIndex, endIndex);
-			const items = [...fincasList.value];
-			for (let i = 0; i < paginatedData.length; i++) items[startIndex + i] = paginatedData[i];
-			fincasList.value = items;
-		}
-	} catch (err: unknown) {
-		console.error("Error al cargar fincas:", err);
-		// En caso de error, intentar cargar desde cache
-		console.log('Error en API, intentando cargar fincas desde cache...');
-		const cachedFincas = getFincas();
-		if (cachedFincas.length > 0) {
-			const startIndex = e.first;
-			const endIndex = e.last;
-			const paginatedData = cachedFincas.slice(startIndex, endIndex);
-			
-			const items = [...fincasList.value];
-			for (let i = 0; i < paginatedData.length; i++) {
-				items[startIndex + i] = paginatedData[i];
-			}
-			
-			fincasList.value = items;
-		}
-	} finally {
-		loadingFinca.value = false;
-	}
+  await fincasLazy.onLazyLoad(e,
+    (p) => fincas.retrieveFincas(p),
+    { isOnline: isOnline.value, hasSession: hasSession() }
+  );
 }
 </script>
 
