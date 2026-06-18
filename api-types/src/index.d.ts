@@ -106,6 +106,7 @@ export interface RetrieveTecnicosQueryParams extends PaginationQueryParams {
 
 export interface RetrieveProductsQueryParams extends PaginationQueryParams {
 		contains?: string;
+		itemCategoryCode?: string;
 	}
 
 export interface RetrieveAbonosQueryParams extends PaginationQueryParams {
@@ -144,6 +145,7 @@ export interface RetrieveProductResponse {
 		id: number;
 		bc_id?: string;
 		nombre: string;
+		itemCategoryCode?: string;
 		materiaActiva: string;
 		plazoSeguimiento?: number;
 		dosis: string;
@@ -182,6 +184,16 @@ export type NewAlbaranProductRequest = AlbaranProductType[];
 export interface NewAlbaranAbonoRequest {
 	tanqueA: AlbaranAbonoType[];
 	tanqueB: AlbaranAbonoType[];
+}
+
+export interface BcSyncResponse {
+	ok: boolean;
+	message: string;
+}
+
+export interface BcSyncStatusResponse {
+	running: boolean;
+	lastSyncAt: string | null;
 }
 
 // También incluir un export por defecto para compatibilidad

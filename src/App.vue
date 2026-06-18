@@ -3,7 +3,7 @@
   -->
 
 <script lang="ts" setup>
-import {ref, onMounted} from "vue";
+import {ref, computed, onMounted} from "vue";
 import type {MenuItem} from "primevue/menuitem";
 import AlbaranDialog from "@/albaran/AlbaranDialog.vue";
 import ListadoAlbaranesDialog from "@/ListadoAlbaranesDialog.vue";
@@ -20,6 +20,7 @@ import { useNetworkStatus } from "@/composables/useNetworkStatus";
 import { useMasterDataCache } from "@/composables/useMasterDataCache";
 import { cacheService } from "@/services/cacheService";
 import { offlineStorage } from "@/services/offlineStorage";
+import { triggerBcSync } from "@/services/bcSync";
 
 // PWA functionality
 const { 
@@ -45,6 +46,28 @@ const { isOnline } = useNetworkStatus();
 // Master data cache (solo usamos clearCache para logout)
 const { clearCache } = useMasterDataCache();
 
+// Sincronización manual con Business Central
+const bcSyncing = ref(false);
+
+async function syncBc(): Promise<void> {
+	if (bcSyncing.value) return;
+	bcSyncing.value = true;
+	try {
+		const response = await triggerBcSync();
+		const data = await response.json();
+		if (!response.ok || !data.ok) {
+			alert(data.message ?? "Error al sincronizar con Business Central");
+			return;
+		}
+		alert(data.message ?? "Sincronización completada");
+	} catch (err) {
+		console.error("Error al sincronizar con Business Central:", err);
+		alert("Error al sincronizar con Business Central");
+	} finally {
+		bcSyncing.value = false;
+	}
+}
+
 const dialogVisible = ref({
 	"AlbaranDialog": false,
 	"ListadoAlbaranesDialog": false,
@@ -59,7 +82,7 @@ function openDialog(dialogName: keyof (typeof dialogVisible.value)): void {
 	dialogVisible.value[dialogName] = true;
 }
 
-const items = ref<MenuItem[]>([
+const items = computed<MenuItem[]>(() => [
 	{
 		label: "Albaranes",
 		items: [
@@ -125,6 +148,11 @@ const items = ref<MenuItem[]>([
 
       openDialog("LoginDialog");
     }
+  },
+  {
+    label: "Sincronizar con Business Central",
+    icon: "pi pi-sync",
+    command: () => syncBc()
   }
 ]);
 
@@ -189,6 +217,12 @@ async function onLoginSuccess() {
 		<div v-if="getSyncStats().totalPending > 0" class="status-item pending" @click="forcSync" title="Hacer clic para sincronizar manualmente">
 			<i class="pi pi-cloud-upload"></i>
 			<span>{{ getSyncStats().totalPending }} pendiente(s)</span>
+		</div>
+
+		<!-- BC sync status -->
+		<div v-if="bcSyncing" class="status-item syncing">
+			<i class="pi pi-spin pi-spinner"></i>
+			<span>Sincronizando con Business Central...</span>
 		</div>
 	</div>
 	
