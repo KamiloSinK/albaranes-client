@@ -24,10 +24,12 @@ export function useLazySelect<T = any>() {
   /**
    * Carga inicial (primera página).
    * @param fetchFn  Función que realiza la petición con { limit, offset }.
-   * @param opts.cacheFn  Función que devuelve los datos desde cache (fallback offline).
+   * @param opts.cacheFn  Función que devuelve los datos desde cache (fallback offline/error).
    * @param opts.mapFn    Transformación opcional sobre cada elemento recibido.
    * @param opts.isOnline Si hay conexión a internet.
-   * @param opts.hasSession Si hay sesión activa.
+   * @param opts.hasSession Ya no se usa para decidir si se consulta al backend: la propia
+   *   respuesta HTTP (401/403) determina si la sesión es válida. Se mantiene en la firma por
+   *   compatibilidad con los call sites existentes.
    */
   async function loadInitial(
     fetchFn: (params: { limit: number; offset: number }) => Promise<Response>,
@@ -39,14 +41,13 @@ export function useLazySelect<T = any>() {
     }
   ) {
     const online = opts?.isOnline ?? true
-    const session = opts?.hasSession ?? true
 
     loading.value = true
     hasMore.value = true
 
     try {
-      // Offline / sin sesión → cache completo
-      if (!online || !session) {
+      // Offline → único origen posible es la cache local
+      if (!online) {
         if (opts?.cacheFn) {
           items.value = opts.cacheFn()
         }
@@ -54,6 +55,9 @@ export function useLazySelect<T = any>() {
         return
       }
 
+      // Con conexión, siempre se intenta backend aunque no se detecte sesión localmente
+      // (p. ej. tras borrar datos del navegador con IndexedDB vacío): si la sesión no es
+      // válida, la respuesta no-ok cae al fallback de cache igualmente.
       const response = await fetchFn({ limit: PAGE_SIZE, offset: 0 })
       if (response.ok) {
         const data: any[] = await response.json()
@@ -94,8 +98,7 @@ export function useLazySelect<T = any>() {
     if (e.last < loadedCount - 5) return
 
     const online = opts?.isOnline ?? true
-    const session = opts?.hasSession ?? true
-    if (!online || !session) return
+    if (!online) return
 
     loading.value = true
     try {

@@ -57,6 +57,12 @@ const previewPlaga = ref<string>("");
 
 // Carga inicial de productos (50 items para el Select)
 async function loadInitialProducts() {
+    // Cache completo de productos (materiaActiva, dosis, plaga...) desactualizado o vacío
+    // (p. ej. tras borrar datos del navegador): refrescarlo en segundo plano si hay conexión.
+    if (isOnline.value && cacheService.needsUpdate('productos')) {
+        cacheService.refreshExpiredCaches().catch((err) => console.error('Error refrescando cache de productos:', err));
+    }
+
     if (productList.value.length > 0) return; // Ya están cargados
     await productosLazy.loadInitial(
         (p) => productos.retrieveProductos(p),

@@ -584,13 +584,14 @@ function onFilterFinca(e: SelectFilterEvent) {
     }, 750);
 }
 
-// Cargar socios y fincas inicialmente cuando se monta el componente
+// Cargar socios y fincas inicialmente cuando se monta el componente.
+// No se gatea por hasSession(): loadInitial* ya intentan backend si hay conexión
+// y caen a cache si la sesión resulta inválida (evita selects vacíos por falso negativo
+// de hasSession(), p. ej. justo tras borrar datos del navegador).
 onMounted(() => {
-    if (hasSession()) {
-        loadInitialSocios();
-        loadInitialFincas();
-        loadInitialTecnicos();
-    }
+    loadInitialSocios();
+    loadInitialFincas();
+    loadInitialTecnicos();
 });
 </script>
 
