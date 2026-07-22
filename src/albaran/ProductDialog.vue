@@ -188,10 +188,13 @@ function onResetForm() {
 	previewPlaga.value = "";
 }
 
-// Cargar productos cuando se abra el diálogo
+// Cargar productos cuando se abra el diálogo; limpiar la vista previa al cerrarlo
+// (el usuario puede cerrar con la X o el mask sin pasar por submit/reset del Form)
 watch(visible, (newValue) => {
 	if (newValue) {
 		loadInitialProducts();
+	} else {
+		onResetForm();
 	}
 });
 </script>
