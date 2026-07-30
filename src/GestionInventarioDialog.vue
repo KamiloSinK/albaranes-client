@@ -17,6 +17,7 @@ import * as fincas from '@/services/fincas'
 // que ya resuelve desde cache leyendo los sectores asociados a la finca
 import { cacheService } from '@/services/cacheService'
 import * as sectoresService from '@/services/sectores'
+import { selectScrollHeight } from '@/utils/selectSizing'
 
 const visible = defineModel('visible', { type: Boolean, required: true, default: false })
 
@@ -38,6 +39,11 @@ const fincasList = fincasLazy.items
 const loadingFinca = fincasLazy.loading
 const selectedSocioId = ref<number | null>(null)
 const selectedFincaId = ref<number | null>(null)
+
+// Altura del panel de cada Select según la cantidad de opciones cargadas, para que no
+// quede un espacio vacío enorme cuando hay pocos resultados.
+const socioScrollHeight = computed(() => selectScrollHeight(sociosList.value.length))
+const fincaScrollHeight = computed(() => selectScrollHeight(fincasList.value.length))
 const socioCodigo = ref<string>('')
 const fincaCodigo = ref<string>('')
 
@@ -126,9 +132,18 @@ async function loadInitialSocios() {
 }
 
 async function loadInitialFincas() {
+  // Sin socio seleccionado no hay nada que listar (una finca siempre pertenece a un socio)
+  if (!selectedSocioId.value) {
+    fincasLazy.reset()
+    return
+  }
   await fincasLazy.loadInitial(
-    (p) => fincas.retrieveFincas(p),
-    { cacheFn: getFincas, isOnline: isOnline.value, hasSession: hasSession() }
+    (p) => fincas.retrieveFincas({ ...p, socioId: selectedSocioId.value! }),
+    {
+      cacheFn: () => getFincas().filter((f: any) => f.socioId === selectedSocioId.value),
+      isOnline: isOnline.value,
+      hasSession: hasSession()
+    }
   )
 }
 
@@ -141,8 +156,9 @@ async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
 }
 
 async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
+  if (!selectedSocioId.value) return
   await fincasLazy.onLazyLoad(e,
-    (p) => fincas.retrieveFincas(p),
+    (p) => fincas.retrieveFincas({ ...p, socioId: selectedSocioId.value! }),
     { isOnline: isOnline.value, hasSession: hasSession() }
   )
 }
@@ -159,12 +175,14 @@ function onChangeSelectSocio(e: SelectChangeEvent) {
   } else {
     socioCodigo.value = ''
   }
-  if (!v) {
-    selectedFincaId.value = null
-    fincaCodigo.value = ''
-    sectoresRows.value = []
-    pendingUpdates.value = []
-  }
+
+  // Cambiar de socio invalida la finca previamente seleccionada (pertenece a otro socio)
+  selectedFincaId.value = null
+  fincaCodigo.value = ''
+  sectoresRows.value = []
+  pendingUpdates.value = []
+  fincasLazy.reset()
+  loadInitialFincas()
 }
 
 async function onChangeSocioId(event: Event) {
@@ -176,24 +194,38 @@ async function onChangeSocioId(event: Event) {
     selectedSocioId.value = null
     selectedFincaId.value = null
     fincaCodigo.value = ''
+    fincasLazy.reset()
     return
   }
 
-  // Buscar primera coincidencia parcial por bc_id únicamente
+  // Buscar coincidencias por nombre o bc_id (ilike); si hay varias, usar la primera
   const term = codigo.toLowerCase()
-  const socio = sociosList.value.find(s => {
-    const bc = (s.bc_id ?? '').toString().trim().toLowerCase()
-    return bc.includes(term)
-  })
+  const coincidencias = sociosList.value.filter(s =>
+    (s.bc_id ?? '').toString().trim().toLowerCase().includes(term) ||
+    (s.nombre ?? '').toLowerCase().includes(term)
+  )
+  const socio = coincidencias[0]
+
+  const socioIdAnterior = selectedSocioId.value
 
   if (socio) {
     selectedSocioId.value = socio.id
     // Inyectar en opciones si no existe para que el Select muestre etiqueta
-    if (!sociosList.value.some(s => s.id === socio!.id)) {
-      sociosList.value = [socio!, ...sociosList.value]
+    if (!sociosList.value.some(s => s.id === socio.id)) {
+      sociosList.value = [socio, ...sociosList.value]
     }
   } else {
     selectedSocioId.value = null
+  }
+
+  // Cambiar de socio invalida la finca previamente seleccionada
+  if (selectedSocioId.value !== socioIdAnterior) {
+    selectedFincaId.value = null
+    fincaCodigo.value = ''
+    sectoresRows.value = []
+    pendingUpdates.value = []
+    fincasLazy.reset()
+    if (selectedSocioId.value) loadInitialFincas()
   }
   // No sobrescribir lo que el usuario está escribiendo
 }
@@ -218,11 +250,12 @@ async function onChangeFincaId(event: Event) {
     return
   }
 
-  // Buscar primera coincidencia parcial por bc_id únicamente
+  // Buscar coincidencias por nombre o bc_id (ilike); si hay varias, usar la primera
   const term = codigo.toLowerCase()
   const finca = fincasList.value.find(f => {
     const bc = (f.bc_id ?? '').toString().trim().toLowerCase()
-    return bc.includes(term)
+    const nombre = (f.nombre ?? '').toLowerCase()
+    return bc.includes(term) || nombre.includes(term)
   })
 
   if (finca) {
@@ -252,7 +285,7 @@ async function loadSectoresForSelection() {
       const fincaSel = fincasList.value.find(f => f.id === selectedFincaId.value)
       const socioNombre = (() => {
         if (selectedSocioId.value) return sociosList.value.find(s => s.id === selectedSocioId.value)?.nombre ?? ''
-        const sid = (fincaSel as any)?.socio_id
+        const sid = (fincaSel as any)?.socioId
         return sid ? (sociosList.value.find(s => s.id === sid)?.nombre ?? '') : ''
       })()
       const fincaNombre = fincaSel?.nombre ?? ''
@@ -285,7 +318,7 @@ async function loadSectoresForSelection() {
     const fincaSel = fincasList.value.find(f => f.id === selectedFincaId.value)
     const socioNombre = (() => {
       if (selectedSocioId.value) return sociosList.value.find(s => s.id === selectedSocioId.value)?.nombre ?? ''
-      const sid = (fincaSel as any)?.socio_id
+      const sid = (fincaSel as any)?.socioId
       return sid ? (sociosList.value.find(s => s.id === sid)?.nombre ?? '') : ''
     })()
     const fincaNombre = fincaSel?.nombre ?? ''
@@ -376,7 +409,9 @@ watch(isOnline, (online) => {
     sociosList.value = getSocios()
     sociosLazy.hasMore.value = false
     fincasLazy.reset()
-    fincasList.value = getFincas()
+    fincasList.value = selectedSocioId.value
+      ? getFincas().filter((f: any) => f.socioId === selectedSocioId.value)
+      : []
     fincasLazy.hasMore.value = false
   }
 })
@@ -408,7 +443,7 @@ watch(readOnlyMode, (val, oldVal) => {
             <InputText name="socioId" id="gestion-inventario-socio-id" spellcheck="false" class="w-24"
               v-model="socioCodigo" @input="onChangeSocioId" />
             <div class="flex-1 flex flex-col gap-1 min-w-0">
-              <Select v-model="selectedSocioId" :options="sociosList" :virtualScrollerOptions="{
+              <Select v-model="selectedSocioId" :options="sociosList" :scrollHeight="socioScrollHeight" :virtualScrollerOptions="{
                 lazy: true,
                 onLazyLoad: onLazyLoadSocios,
                 itemSize: 36,
@@ -425,7 +460,7 @@ watch(readOnlyMode, (val, oldVal) => {
             <InputText name="fincaId" id="gestion-inventario-finca-id" spellcheck="false" class="w-24" inputmode="text"
               v-model="fincaCodigo" @input="onChangeFincaId" :disabled="!selectedSocioId" />
             <div class="flex-1 flex flex-col gap-1 min-w-0">
-              <Select v-model="selectedFincaId" :options="fincasList" :virtualScrollerOptions="{
+              <Select v-model="selectedFincaId" :options="fincasList" :scrollHeight="fincaScrollHeight" :virtualScrollerOptions="{
                 lazy: true,
                 onLazyLoad: onLazyLoadFincas,
                 itemSize: 36,

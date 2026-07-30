@@ -8,7 +8,6 @@ import { cacheService } from './cacheService';
 // Tipo extendido para incluir filtros adicionales del lado del cliente
 interface ExtendedRetrieveFincasQueryParams extends RetrieveFincasQueryParams {
 	search?: string;
-	socio_id?: string;
 	activo?: boolean;
 }
 
@@ -31,8 +30,8 @@ function filterCachedFincas(fincas: any[], filter: ExtendedRetrieveFincasQueryPa
         );
     }
 
-	if (filter.socio_id) {
-		filtered = filtered.filter(finca => finca.socio_id === parseInt(filter.socio_id!));
+	if (filter.socioId !== undefined && filter.socioId !== null) {
+		filtered = filtered.filter(finca => finca.socioId === filter.socioId);
 	}
 
 	if (filter.activo !== undefined) {

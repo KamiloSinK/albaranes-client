@@ -5,7 +5,7 @@
 <script setup lang="ts">
 import * as albaranes from "@/services/albaranes";
 import {Form, type FormResolverOptions, type FormSubmitEvent} from "@primevue/forms";
-import {ref, onMounted, watch} from "vue";
+import {ref, computed, onMounted, watch} from "vue";
 import type {RetrieveAlbaranResponse, RetrieveFincaResponse, RetrieveSocioResponse} from "@coa/api-types";
 import {Button, type VirtualScrollerLazyEvent} from "primevue";
 import * as socios from "@/services/socios.ts";
@@ -15,6 +15,7 @@ import { useLazySelect } from "@/composables/useLazySelect";
 import { useNetworkStatus } from "@/composables/useNetworkStatus";
 import { useSession } from "@/composables/useSession";
 import { cacheService } from "@/services/cacheService";
+import { selectScrollHeight } from "@/utils/selectSizing";
 
 const visible = defineModel("visible", {type: Boolean, required: true, default: false});
 
@@ -31,6 +32,12 @@ const loadingSocio = sociosLazy.loading;
 const fincasLazy = useLazySelect<RetrieveFincaResponse>();
 const fincasList = fincasLazy.items;
 const loadingFinca = fincasLazy.loading;
+
+// Altura del panel de cada Select según la cantidad de opciones cargadas, para que no
+// quede un espacio vacío enorme cuando hay pocos resultados.
+const socioScrollHeight = computed(() => selectScrollHeight(sociosList.value.length));
+const fincaScrollHeight = computed(() => selectScrollHeight(fincasList.value.length));
+
 const isLoading = ref<boolean>(false);
 const mode = ref<"preview" | "print">("preview");
 // v-model locales para mantener el comportamiento coherente con otros Select
@@ -51,6 +58,14 @@ watch(visible, (isOpen) => {
   }
 });
 
+// Una finca siempre pertenece a un único socio: al cambiar el socio seleccionado,
+// invalidar la finca previa y recargar fincas acotadas a ese socio.
+watch(selectedSocioId, () => {
+  selectedFincaId.value = null;
+  fincasLazy.reset();
+  loadInitialFincas();
+});
+
 // Responder dinámicamente a cambios de conectividad
 watch(isOnline, (online) => {
   if (!visible.value) return;
@@ -62,7 +77,9 @@ watch(isOnline, (online) => {
     sociosList.value = getSocios();
     sociosLazy.hasMore.value = false;
     fincasLazy.reset();
-    fincasList.value = getFincas();
+    fincasList.value = selectedSocioId.value
+      ? getFincas().filter((f: any) => f.socioId === selectedSocioId.value)
+      : [];
     fincasLazy.hasMore.value = false;
   }
 });
@@ -167,9 +184,18 @@ async function loadInitialSocios() {
 }
 
 async function loadInitialFincas() {
+  // Sin socio seleccionado no hay nada que listar (una finca siempre pertenece a un socio)
+  if (!selectedSocioId.value) {
+    fincasLazy.reset();
+    return;
+  }
   await fincasLazy.loadInitial(
-    (p) => fincas.retrieveFincas(p),
-    { cacheFn: getFincas, isOnline: isOnline.value, hasSession: hasSession() }
+    (p) => fincas.retrieveFincas({ ...p, socioId: selectedSocioId.value! }),
+    {
+      cacheFn: () => getFincas().filter((f: any) => f.socioId === selectedSocioId.value),
+      isOnline: isOnline.value,
+      hasSession: hasSession()
+    }
   );
 }
 
@@ -182,8 +208,9 @@ async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
 }
 
 async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
+  if (!selectedSocioId.value) return;
   await fincasLazy.onLazyLoad(e,
-    (p) => fincas.retrieveFincas(p),
+    (p) => fincas.retrieveFincas({ ...p, socioId: selectedSocioId.value! }),
     { isOnline: isOnline.value, hasSession: hasSession() }
   );
 }
@@ -258,11 +285,12 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
 					</div>
 				</div>
 			</Fieldset>
-      <div class="flex-1 flex flex-col gap-1">
+      <div class="flex-1 flex flex-col gap-1 min-w-0">
         <label>Socio:</label>
         <Select
           v-model="selectedSocioId"
           :options="sociosList"
+          :scrollHeight="socioScrollHeight"
           :virtualScrollerOptions="{
             lazy: true,
             onLazyLoad: onLazyLoadSocios,
@@ -286,11 +314,13 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
 					v-text="$form.socio.error.message">
 				</Message>
 			</div>
-      <div class="flex-1 flex flex-col gap-1">
+      <div class="flex-1 flex flex-col gap-1 min-w-0">
         <label>Finca:</label>
         <Select
           v-model="selectedFincaId"
           :options="fincasList"
+          :disabled="!selectedSocioId"
+          :scrollHeight="fincaScrollHeight"
           :virtualScrollerOptions="{
             lazy: true,
             onLazyLoad: onLazyLoadFincas,
@@ -301,7 +331,7 @@ async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
           optionLabel="nombre"
           optionValue="id"
           :filterFields="['nombre','bc_id']"
-          placeholder="Seleccione"
+          :placeholder="selectedSocioId ? 'Seleccione' : 'Seleccione un socio primero'"
           name="finca"
           filter
           class="w-full">

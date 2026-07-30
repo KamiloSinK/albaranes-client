@@ -94,10 +94,13 @@ export interface RetrieveAlbaranesQueryParams {
 
 export interface RetrieveSociosQueryParams extends PaginationQueryParams {
 		contains?: string;
+		code?: string;
 	}
 
 export interface RetrieveFincasQueryParams extends PaginationQueryParams {
 		contains?: string;
+		code?: string;
+		socioId?: number;
 	}
 
 export interface RetrieveTecnicosQueryParams extends PaginationQueryParams {
@@ -130,6 +133,7 @@ export interface RetrieveSectorResponse {
 export interface RetrieveFincaResponse {
 		id: number;
 		bc_id: string;
+		socioId: number | null;
 		nombre: string;
 		sectorIds: number[];
 		sectores?: RetrieveSectorResponse[];

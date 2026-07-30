@@ -12,6 +12,7 @@ import { useMasterDataCache } from '@/composables/useMasterDataCache'
 import { useNetworkStatus } from '@/composables/useNetworkStatus'
 import { cacheService } from '@/services/cacheService'
 import { useSession } from '@/composables/useSession'
+import { selectScrollHeight } from '@/utils/selectSizing'
 
 const visible = defineModel("visible", {type: Boolean, required: true, default: false});
 const emit = defineEmits(["addAbono"]);
@@ -21,6 +22,7 @@ const form = ref<any>()
 
 const abonoList = ref<RetrieveAbonoResponse[]>([]);
 const loadingAbono = ref<boolean>(false);
+const abonoScrollHeight = computed(() => selectScrollHeight(abonoList.value.length));
 
 // Cache y estado de red
 const { isOnline } = useNetworkStatus()
@@ -255,10 +257,11 @@ async function clearForm() {
 			<div class="space-y-4 m-0 p-4">
 				<div class="flex items-center">
 					<label class="w-28 text-end font-semibold pr-2">Producto:</label>
-					<div class="flex-1 flex flex-col gap-1">
+					<div class="flex-1 flex flex-col gap-1 min-w-0">
 						<Select
-							v-model="selectedAbono"
+						v-model="selectedAbono"
 							:options="abonoList"
+							:scrollHeight="abonoScrollHeight"
 							:virtualScrollerOptions="{
 								lazy: true,
 								onLazyLoad: onLazyLoadAbonos,

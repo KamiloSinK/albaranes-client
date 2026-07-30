@@ -3,7 +3,7 @@
   -->
 
 <script setup lang="ts">
-import {ref, onMounted} from "vue";
+import {ref, computed, onMounted} from "vue";
 import type {SelectChangeEvent, SelectFilterEvent, VirtualScrollerLazyEvent} from "primevue";
 import * as albaranes from "@/services/albaranes";
 import * as socios from "@/services/socios";
@@ -14,6 +14,7 @@ import { useLazySelect } from "@/composables/useLazySelect";
 import { useNetworkStatus } from "@/composables/useNetworkStatus";
 import { useSession } from "@/composables/useSession";
 import { cacheService } from "@/services/cacheService";
+import { selectScrollHeight } from "@/utils/selectSizing";
 import type {
     RetrieveAlbaranResponse,
     RetrieveFincaResponse,
@@ -42,6 +43,12 @@ interface TecnicoOption extends RetrieveTecnicoResponse {
 
 const loadingAlbaran = ref<boolean>(false);
 
+// Refs a los componentes Select, para poder limpiar su filtro interno cuando la
+// selección se hace desde el input de código (de afuera), evitando que quede texto
+// de una búsqueda anterior en el filtro del propio Select.
+const socioSelectRef = ref<any>(null);
+const fincaSelectRef = ref<any>(null);
+
 // Lazy loading para Selects paginados
 const sociosLazy = useLazySelect<RetrieveSocioResponse>();
 const sociosList = sociosLazy.items;
@@ -54,6 +61,12 @@ const loadingFinca = fincasLazy.loading;
 const tecnicosLazy = useLazySelect<TecnicoOption>();
 const tecnicosList = tecnicosLazy.items;
 const loadingTecnico = tecnicosLazy.loading;
+
+// Altura del panel de cada Select según la cantidad de opciones cargadas, para que no
+// quede un espacio vacío enorme cuando hay pocos resultados.
+const socioScrollHeight = computed(() => selectScrollHeight(sociosList.value.length));
+const fincaScrollHeight = computed(() => selectScrollHeight(fincasList.value.length));
+const tecnicoScrollHeight = computed(() => selectScrollHeight(tecnicosList.value.length));
 
 // Debounce para búsquedas
 let socioInputTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -85,8 +98,9 @@ async function onLazyLoadSocios(e: VirtualScrollerLazyEvent) {
 }
 
 async function onLazyLoadFincas(e: VirtualScrollerLazyEvent) {
+    if (!selectedSocioId.value) return;
     await fincasLazy.onLazyLoad(e,
-        (p) => fincas.retrieveFincas(p),
+        (p) => fincas.retrieveFincas({ ...p, socioId: selectedSocioId.value! }),
         { isOnline: isOnline.value, hasSession: hasSession() }
     );
 }
@@ -107,9 +121,18 @@ async function loadInitialSocios() {
 }
 
 async function loadInitialFincas() {
+    // Sin socio seleccionado no hay nada que listar (una finca siempre pertenece a un socio)
+    if (!selectedSocioId.value) {
+        fincasLazy.reset();
+        return;
+    }
     await fincasLazy.loadInitial(
-        (p) => fincas.retrieveFincas(p),
-        { cacheFn: getFincas, isOnline: isOnline.value, hasSession: hasSession() }
+        (p) => fincas.retrieveFincas({ ...p, socioId: selectedSocioId.value! }),
+        {
+            cacheFn: () => getFincas().filter((f: any) => f.socioId === selectedSocioId.value),
+            isOnline: isOnline.value,
+            hasSession: hasSession()
+        }
     );
 }
 
@@ -249,20 +272,49 @@ async function onClickFind() {
 	}
 }
 
-function onChangeSelectSocio(e: SelectChangeEvent) {
-    // Al seleccionar, mostrar el bc_id completo en el input (fallback al id formateado solo si falta bc_id)
-    selectedSocioId.value = e.value;
-    const socioSel = sociosList.value.find(s => s.id === e.value);
-    props.formSlot.socioId.value = socioSel?.bc_id ?? e.value.toString().padStart(4, "0");
+// Aplica la selección de un socio: sincroniza el input de código y recarga las fincas
+// de ESE socio (una finca siempre pertenece a un único socio, así que cambiar de socio
+// invalida cualquier finca previamente seleccionada).
+// syncCodeInput=false cuando la llamada viene del propio input de código: mientras el
+// usuario está escribiendo ahí, reescribir su valor pisa lo que está tecleando (el propio
+// input de PrimeVue Forms ya sincroniza su valor con lo tecleado).
+function applySocioSelection(socioId: number, opts?: { syncCodeInput?: boolean }) {
+    selectedSocioId.value = socioId;
+    if (opts?.syncCodeInput ?? true) {
+        const socioSel = sociosList.value.find(s => s.id === socioId);
+        props.formSlot.socioId.value = socioSel?.bc_id ?? socioId.toString().padStart(4, "0");
+    }
 
-	if (props.formSlot.socioId.value && props.formSlot.fincaId.value && !dialogState.value.originalValues)
-		changePlaceholderNewItem().then().catch();
+    selectedFincaId.value = null;
+    props.formSlot.fincaId.value = "";
+    clearSectores();
+    fincasLazy.reset();
+    loadInitialFincas();
 }
 
-// Función para buscar socio por bc_id - busca en cache primero, luego en API si está online
+function onChangeSelectSocio(e: SelectChangeEvent) {
+    applySocioSelection(e.value as number);
+}
+
+// Limpia el texto de filtro interno de un Select (propiedad interna de PrimeVue).
+// Se usa al seleccionar desde el input de código de afuera, para que no quede texto
+// de una búsqueda anterior dentro del Select.
+function clearSelectFilter(selectRef: any) {
+    if (selectRef?.value) selectRef.value.filterValue = null;
+}
+
+// Busca coincidencias de socio SOLO por código (bc_id), nunca por nombre, en cache y,
+// si no hay, en la API. Si hay una única coincidencia la selecciona; si hay varias,
+// selecciona la primera. (El filtro por nombre corresponde al Select, no a este input.)
+// Todo el proceso espera DEBOUNCE_MS de inactividad antes de decidir, para no seleccionar
+// una coincidencia parcial mientras el usuario todavía está escribiendo el código.
+const CODE_INPUT_DEBOUNCE_MS = 600;
+
 function onChangeSocioId(event: Event) {
     const target = event.target as HTMLInputElement;
     const codigo = target.value.trim();
+
+    if (socioInputTimeout) clearTimeout(socioInputTimeout);
 
 	// Limpiar selección si el input está vacío
 	if (!codigo || codigo.length === 0) {
@@ -270,50 +322,45 @@ function onChangeSocioId(event: Event) {
 		return;
 	}
 
-	// Primero buscar en la lista ya cargada (cache local) por bc_id (sin debounce)
-    const term = codigo.toLowerCase();
-    let socioEncontrado = sociosList.value.find(socio => (socio.bc_id ?? '').toString().trim().toLowerCase().includes(term));
-
-    if (socioEncontrado) {
-        selectedSocioId.value = socioEncontrado.id;
-        if (props.formSlot.fincaId.value && !dialogState.value.originalValues)
-            changePlaceholderNewItem().then().catch();
-        return;
-    }
-
-    // Si no se encuentra en cache, aplicar debounce para buscar en API
-    if (socioInputTimeout) clearTimeout(socioInputTimeout);
-    
     socioInputTimeout = setTimeout(async () => {
-        // Buscar en la API por bc_id si estamos online
+        // Primero buscar en la lista ya cargada (cache local) por bc_id
+        const term = codigo.toLowerCase();
+        const coincidencias = sociosList.value.filter(socio =>
+            (socio.bc_id ?? '').toString().trim().toLowerCase().includes(term)
+        );
+
+        if (coincidencias.length > 0) {
+            applySocioSelection(coincidencias[0].id, { syncCodeInput: false });
+            clearSelectFilter(socioSelectRef);
+            return;
+        }
+
+        // Si no se encuentra en cache, buscar en la API por código
         if (!isOnline.value || !hasSession()) {
             selectedSocioId.value = null;
             return;
         }
-        
+
         try {
-            const response = await socios.retrieveSocioByBcId(codigo);
+            const response = await socios.retrieveSocios({ code: codigo, limit: 50 });
             if (response.ok) {
-                const data: RetrieveSocioResponse = await response.json();
-                
-                // Agregar a la lista si no existe
-                if (!sociosList.value.some(s => s.id === data.id)) {
-                    sociosList.value.push(data);
+                const data: RetrieveSocioResponse[] = await response.json();
+
+                if (data.length > 0) {
+                    sociosLazy.addItems(data);
+                    applySocioSelection(data[0].id);
+                    clearSelectFilter(socioSelectRef);
+                } else {
+                    selectedSocioId.value = null;
                 }
-                
-                selectedSocioId.value = data.id;
-                
-                // Actualizar placeholder si es necesario
-                if (props.formSlot.fincaId.value && !dialogState.value.originalValues)
-                    changePlaceholderNewItem().then().catch();
             } else {
                 selectedSocioId.value = null;
             }
         } catch (err) {
-            console.error('Error buscando socio por bc_id en API:', err);
+            console.error('Error buscando socio en API:', err);
             selectedSocioId.value = null;
         }
-    }, 300);
+    }, CODE_INPUT_DEBOUNCE_MS);
 }
 
 async function changePlaceholderNewItem() {
@@ -397,21 +444,29 @@ function loadAlbaranToForm(data: RetrieveAlbaranResponse) {
 	workaroundSelectTecnico.value = `${data.view.tecnicoNombres} ${data.view.tecnicoApellidos}`;
 }
 
+// Aplica la selección de una finca: sectores, bc_id visible y placeholder.
+// syncCodeInput=false cuando la llamada viene del propio input de código: mientras el
+// usuario está escribiendo ahí, reescribir su valor pisa lo que está tecleando.
+function applyFincaSelection(finca: RetrieveFincaResponse, opts?: { syncCodeInput?: boolean }) {
+    const fullSectorIds = (finca.sectorIds || []).map((sectorId: any) => finca.id.toString().padStart(4, "0") + sectorId.toString().padStart(4, "0"));
+    props.formSlot.sectorIdsPreview.value = fullSectorIds.join("-");
+    if (opts?.syncCodeInput ?? true) {
+        props.formSlot.fincaId.value = finca.bc_id ?? finca.id.toString().padStart(4, "0");
+    }
+    dialogState.value.selectedFincaSectorIds = finca.sectorIds || [];
+    selectedFincaId.value = finca.id;
+
+    if (props.formSlot.socioId.value && props.formSlot.fincaId.value && !dialogState.value.originalValues)
+        changePlaceholderNewItem().then().catch();
+}
+
 async function onChangeSelectFinca(e: SelectChangeEvent) {
 	try {
 		// Buscar la finca en la lista ya cargada (cache)
 		const finca = fincasList.value.find(f => f.id === e.value);
-		
-		if (finca) {
-			// Usar datos directamente del cache
-			const fullSectorIds = finca.sectorIds.map((sectorId: any) => e.value.toString().padStart(4, "0") + sectorId.toString().padStart(4, "0"));
-			props.formSlot.sectorIdsPreview.value = fullSectorIds.join("-");
-			props.formSlot.fincaId.value = finca.bc_id ?? e.value.toString().padStart(4, "0");
-			dialogState.value.selectedFincaSectorIds = finca.sectorIds;
-			selectedFincaId.value = e.value; // Sincronizar con la variable reactiva
 
-			if (props.formSlot.socioId.value && props.formSlot.fincaId.value && !dialogState.value.originalValues)
-				changePlaceholderNewItem().then().catch();
+		if (finca) {
+			applyFincaSelection(finca);
         } else {
             // Fallback: si no está en cache, hacer consulta (solo si hay sesión y conexión)
             if (!hasSession() || !isOnline.value) {
@@ -427,93 +482,76 @@ async function onChangeSelectFinca(e: SelectChangeEvent) {
 			}
 
 			const data: RetrieveFincaResponse = await response.json();
-			const fullSectorIds = data.sectorIds.map((sectorId: any) => e.value.toString().padStart(4, "0") + sectorId.toString().padStart(4, "0"));
-			props.formSlot.sectorIdsPreview.value = fullSectorIds.join("-");
-			props.formSlot.fincaId.value = e.value.toString().padStart(4, "0");
-			dialogState.value.selectedFincaSectorIds = data.sectorIds;
-			selectedFincaId.value = e.value;
-
-			if (props.formSlot.socioId.value && props.formSlot.fincaId.value && !dialogState.value.originalValues)
-				changePlaceholderNewItem().then().catch();
+			applyFincaSelection(data);
 		}
 	} catch (err: unknown) {
 		console.error('Error en onChangeSelectFinca:', err);
-	} finally {
-
 	}
 }
 
-// Función para buscar finca por bc_id - busca en cache primero, luego en API si está online
+// Busca coincidencias de finca SOLO por código (bc_id), nunca por nombre, acotado al
+// socio seleccionado, primero en cache y si no en la API. Si hay una única coincidencia
+// la selecciona; si hay varias, selecciona la primera. (El filtro por nombre corresponde
+// al Select, no a este input.)
+// Todo el proceso espera CODE_INPUT_DEBOUNCE_MS de inactividad antes de decidir, para no
+// seleccionar una coincidencia parcial mientras el usuario todavía está escribiendo el código.
 function onChangeFincaId(event: Event) {
     const target = event.target as HTMLInputElement;
     const codigo = target.value.trim();
-    
+
+    if (fincaInputTimeout) clearTimeout(fincaInputTimeout);
+
     // Limpiar si está vacío
     if (codigo.length === 0) {
         selectedFincaId.value = null;
         clearSectores();
         return;
     }
-    
-    // Primero buscar en la lista ya cargada (cache local) por bc_id (sin debounce)
-    const term = codigo.toLowerCase();
-    let finca = fincasList.value.find(f => (f.bc_id ?? '').toString().trim().toLowerCase().includes(term));
 
-    if (finca) {
-        selectedFincaId.value = finca.id;
-        
-        // Usar sectores que vienen con la finca
-        const fullSectorIds = (finca.sectorIds || []).map((sectorId: any) => finca!.id.toString().padStart(4, "0") + sectorId.toString().padStart(4, "0"));
-        props.formSlot.sectorIdsPreview.value = fullSectorIds.join("-");
-        dialogState.value.selectedFincaSectorIds = finca.sectorIds || [];
-        
-        if (props.formSlot.socioId.value && props.formSlot.fincaId.value && !dialogState.value.originalValues)
-            changePlaceholderNewItem().then().catch();
-        return;
-    }
-
-    // No hay coincidencia en cache - limpiar sectores inmediatamente
-    clearSectores();
-
-    // Si no se encuentra en cache, aplicar debounce para buscar en API
-    if (fincaInputTimeout) clearTimeout(fincaInputTimeout);
-    
     fincaInputTimeout = setTimeout(async () => {
-        // Buscar en la API por bc_id si estamos online
+        // Primero buscar en la lista ya cargada (cache local) por bc_id
+        const term = codigo.toLowerCase();
+        const coincidencias = fincasList.value.filter(f =>
+            (f.bc_id ?? '').toString().trim().toLowerCase().includes(term)
+        );
+
+        if (coincidencias.length > 0) {
+            applyFincaSelection(coincidencias[0], { syncCodeInput: false });
+            clearSelectFilter(fincaSelectRef);
+            return;
+        }
+
+        // No hay coincidencia en cache - limpiar sectores
+        clearSectores();
+
+        // Buscar en la API por código si estamos online
         if (!isOnline.value || !hasSession()) {
             selectedFincaId.value = null;
             return;
         }
-        
+
         try {
-            const response = await fincas.retrieveFincaByBcId(codigo);
+            const response = await fincas.retrieveFincas({ code: codigo, limit: 50, socioId: selectedSocioId.value ?? undefined });
             if (response.ok) {
-                const data: RetrieveFincaResponse = await response.json();
-                
-                // Agregar a la lista si no existe
-                if (!fincasList.value.some(ff => ff.id === data.id)) {
-                    fincasList.value.push(data);
+                const data: RetrieveFincaResponse[] = await response.json();
+
+                if (data.length > 0) {
+                    fincasLazy.addItems(data);
+                    applyFincaSelection(data[0]);
+                    clearSelectFilter(fincaSelectRef);
+                } else {
+                    selectedFincaId.value = null;
+                    // Sectores ya fueron limpiados arriba
                 }
-                
-                selectedFincaId.value = data.id;
-                
-                // Usar sectores que vienen con la finca
-                const fullSectorIds = (data.sectorIds || []).map((sectorId: any) => data.id.toString().padStart(4, "0") + sectorId.toString().padStart(4, "0"));
-                props.formSlot.sectorIdsPreview.value = fullSectorIds.join("-");
-                dialogState.value.selectedFincaSectorIds = data.sectorIds || [];
-                
-                if (props.formSlot.socioId.value && props.formSlot.fincaId.value && !dialogState.value.originalValues)
-                    changePlaceholderNewItem().then().catch();
             } else {
                 selectedFincaId.value = null;
-                // Sectores ya fueron limpiados arriba
             }
         } catch (err) {
-            console.error('Error buscando finca por bc_id en API:', err);
+            console.error('Error buscando finca en API:', err);
             selectedFincaId.value = null;
             // Sectores ya fueron limpiados arriba
         }
-    }, 300);
+    }, CODE_INPUT_DEBOUNCE_MS);
 }
 
 // Limpiar datos de sectores
@@ -543,13 +581,15 @@ function onFilterSocio(e: SelectFilterEvent) {
     socioFilterTimeout = setTimeout(async () => {
         // Solo buscar en API si estamos online y hay sesión
         if (!isOnline.value || !hasSession()) return;
-        
+
         try {
             const response = await socios.retrieveSocios({ contains: searchTerm, limit: 50 });
             if (response.ok) {
                 const data: RetrieveSocioResponse[] = await response.json();
-                
+
                 sociosLazy.addItems(data);
+                // Única coincidencia -> seleccionarla; varias -> seleccionar la primera
+                if (data.length > 0) applySocioSelection(data[0].id);
             }
         } catch (err) {
             console.error('Error buscando socios en API:', err);
@@ -570,13 +610,15 @@ function onFilterFinca(e: SelectFilterEvent) {
     fincaFilterTimeout = setTimeout(async () => {
         // Solo buscar en API si estamos online y hay sesión
         if (!isOnline.value || !hasSession()) return;
-        
+
         try {
-            const response = await fincas.retrieveFincas({ contains: searchTerm, limit: 50 });
+            const response = await fincas.retrieveFincas({ contains: searchTerm, limit: 50, socioId: selectedSocioId.value ?? undefined });
             if (response.ok) {
                 const data: RetrieveFincaResponse[] = await response.json();
-                
+
                 fincasLazy.addItems(data);
+                // Única coincidencia -> seleccionarla; varias -> seleccionar la primera
+                if (data.length > 0) applyFincaSelection(data[0]);
             }
         } catch (err) {
             console.error('Error buscando fincas en API:', err);
@@ -627,12 +669,15 @@ onMounted(() => {
 				spellcheck="false"
 				class="w-17 mr-2"
 				:disabled="dialogState.originalValues !== null"
+				:invalid="(props.formSlot.socioId?.invalid ?? false) && (props.formSlot.socioId?.touched ?? false)"
 				@input="onChangeSocioId"/>
-			<div class="flex-1 flex flex-col gap-1">
+			<div class="flex-1 flex flex-col gap-1 min-w-0">
                 <Select
+                    ref="socioSelectRef"
                     v-model="selectedSocioId"
                     :options="sociosList"
                     :disabled="dialogState.originalValues !== null"
+                    :scrollHeight="socioScrollHeight"
                     :virtualScrollerOptions="{
                         lazy: true,
                         onLazyLoad: onLazyLoadSocios,
@@ -650,7 +695,7 @@ onMounted(() => {
                     class="w-full">
                 </Select>
 				<Message
-					v-if="props.formSlot.socioId?.invalid ?? false"
+					v-if="(props.formSlot.socioId?.invalid ?? false) && (props.formSlot.socioId?.touched ?? false)"
 					severity="error"
 					size="small"
 					variant="simple">
@@ -666,13 +711,16 @@ onMounted(() => {
 				spellcheck="false"
 				class="w-17 mr-2"
 				inputmode="text"
-				:disabled="dialogState.originalValues !== null"
+				:disabled="dialogState.originalValues !== null || !selectedSocioId"
+				:invalid="(props.formSlot.fincaId?.invalid ?? false) && (props.formSlot.fincaId?.touched ?? false)"
 				@input="onChangeFincaId"/>
-			<div class="flex-1 flex flex-col gap-1">
+			<div class="flex-1 flex flex-col gap-1 min-w-0">
 				<Select
+					ref="fincaSelectRef"
 					v-model="selectedFincaId"
 					:options="fincasList"
-					:disabled="dialogState.originalValues !== null"
+					:disabled="dialogState.originalValues !== null || !selectedSocioId"
+					:scrollHeight="fincaScrollHeight"
 					:virtualScrollerOptions="{
 						lazy: true,
 						onLazyLoad: onLazyLoadFincas,
@@ -685,12 +733,12 @@ onMounted(() => {
 					optionLabel="nombre"
 					optionValue="id"
 					:filterFields="['nombre','bc_id']"
-					:placeholder="dialogState.originalValues !== null ? workaroundSelectFinca : 'Seleccione'"
+					:placeholder="dialogState.originalValues !== null ? workaroundSelectFinca : (selectedSocioId ? 'Seleccione' : 'Seleccione un socio primero')"
 					filter
 					class="w-full">
 				</Select>
 				<Message
-					v-if="props.formSlot.fincaId?.invalid ?? false"
+					v-if="(props.formSlot.fincaId?.invalid ?? false) && (props.formSlot.fincaId?.touched ?? false)"
 					severity="error"
 					size="small"
 					variant="simple"
@@ -724,9 +772,10 @@ onMounted(() => {
 		</div>
 		<div class="flex items-center">
 			<label class="w-24 text-end font-semibold pr-2" for="albaran-tecnico">Técnico:</label>
-			<div class="flex-1 flex flex-col gap-1">
+			<div class="flex-1 flex flex-col gap-1 min-w-0">
 				<Select
 					:options="tecnicosList"
+					:scrollHeight="tecnicoScrollHeight"
 					:virtualScrollerOptions="{
 						lazy: true,
 						onLazyLoad: onLazyLoadTecnicos,

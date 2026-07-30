@@ -4,7 +4,7 @@
 
 <script setup lang="ts">
 import type {FormResolverOptions, FormSubmitEvent} from "@primevue/forms";
-import {ref, watch} from "vue";
+import {ref, computed, watch} from "vue";
 import type {AlbaranMaquinaria, AlbaranNivel, RetrieveProductResponse} from "@coa/api-types";
 import type {SelectChangeEvent, SelectFilterEvent, VirtualScrollerLazyEvent} from "primevue";
 import * as productos from "@/services/productos";
@@ -13,6 +13,7 @@ import {useLazySelect} from "@/composables/useLazySelect";
 import {useNetworkStatus} from "@/composables/useNetworkStatus";
 import {cacheService} from "@/services/cacheService";
 import {useSession} from "@/composables/useSession";
+import {selectScrollHeight} from "@/utils/selectSizing";
 
 const visible = defineModel("visible", {type: Boolean, required: true, default: false});
 const emit = defineEmits(["addProduct"]);
@@ -49,6 +50,7 @@ const productosLazy = useLazySelect<ProductoLite>();
 const productList = productosLazy.items;
 const loadingProduct = productosLazy.loading;
 const mapProductoLite = (p: any): ProductoLite => ({ id: p.id, nombre: p.nombre, bc_id: p.bc_id });
+const productScrollHeight = computed(() => selectScrollHeight(productList.value.length));
 
 const previewMateriaActiva = ref<string>("");
 const previewPlazoSeguimiento = ref<string>("");
@@ -210,7 +212,7 @@ watch(visible, (newValue) => {
 			<div class="space-y-4 m-0 p-4">
 				<div class="flex items-center">
 					<label class="w-28 text-end font-semibold pr-2">Maquinaria:</label>
-					<div class="flex-1 flex flex-col gap-1">
+					<div class="flex-1 flex flex-col gap-1 min-w-0">
 						<Select
 							:options="maquinariaOptions"
 							name="maquinaria"
@@ -228,7 +230,7 @@ watch(visible, (newValue) => {
 				</div>
 				<div class="flex items-center">
 					<label class="w-28 text-end font-semibold pr-2">Nivel:</label>
-					<div class="flex-1 flex flex-col gap-1">
+					<div class="flex-1 flex flex-col gap-1 min-w-0">
 						<Select
 							:options="nivelOptions"
 							name="nivel"
@@ -246,9 +248,10 @@ watch(visible, (newValue) => {
 				</div>
 				<div class="flex items-center">
 					<label class="w-28 text-end font-semibold pr-2">Producto:</label>
-					<div class="flex-1 flex flex-col gap-1">
+					<div class="flex-1 flex flex-col gap-1 min-w-0">
 						<Select
 							:options="productList"
+							:scrollHeight="productScrollHeight"
 							:virtualScrollerOptions="{
 								lazy: true,
 								onLazyLoad: onLazyLoadProducts,

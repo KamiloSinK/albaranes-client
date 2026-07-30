@@ -41,6 +41,48 @@ html, body {
 	}
 }
 
+/* Los Select no deben crecer más allá de su contenedor cuando la opción elegida
+   tiene un nombre largo (rompe la homogeneidad de los formularios); en su lugar,
+   el texto se trunca con puntos suspensivos. Con !important porque el CSS de estos
+   componentes lo inyecta PrimeVue en tiempo de ejecución, después de este archivo,
+   y gana el empate de especificidad por orden de aparición. */
+.p-select {
+	min-width: 0 !important;
+	max-width: 100% !important;
+}
+
+.p-select-label {
+	overflow: hidden !important;
+	text-overflow: ellipsis !important;
+	white-space: nowrap !important;
+}
+
+/* Ídem para las opciones dentro del panel desplegable: un nombre largo no debe generar
+   scroll horizontal, se trunca con puntos suspensivos. El contenedor que realmente
+   scrollea es .p-virtualscroller (overflow: auto propio de PrimeVue), y su contenido
+   interno (.p-virtualscroller-content) es quien puede quedar más ancho que el panel. */
+.p-virtualscroller,
+.p-virtualscroller-content,
+.p-select-list {
+	overflow-x: hidden !important;
+	max-width: 100% !important;
+	box-sizing: border-box !important;
+}
+
+.p-select-option {
+	max-width: 100% !important;
+	box-sizing: border-box !important;
+}
+
+.p-select-option-label {
+	display: block !important;
+	overflow: hidden !important;
+	text-overflow: ellipsis !important;
+	white-space: nowrap !important;
+	min-width: 0 !important;
+	max-width: 100% !important;
+}
+
 /*noinspection CssUnresolvedCustomProperty*/
 .toolbar-separator {
 	width: 1px;
