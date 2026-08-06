@@ -22,10 +22,11 @@ function getSectoresFromCache(fincaId: number): any[] {
 }
 
 // Parseo opcional para obtener número legible (p.e. SEC0001_5 -> 5)
+// "sector" = finca hermana del mismo socio: bc_id ya es un identificador real y
+// legible (el bc_id de esa finca), no hace falta parsear ningún sufijo.
 export function parseSectorNumero(sector: any): string {
   if (sector?.bc_id && typeof sector.bc_id === 'string') {
-    const match = sector.bc_id.match(/_(\d+)$/)
-    if (match) return match[1]
+    return sector.bc_id
   }
   return sector?.id != null ? String(sector.id) : ''
 }

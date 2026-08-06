@@ -448,12 +448,15 @@ function loadAlbaranToForm(data: RetrieveAlbaranResponse) {
 // syncCodeInput=false cuando la llamada viene del propio input de código: mientras el
 // usuario está escribiendo ahí, reescribir su valor pisa lo que está tecleando.
 function applyFincaSelection(finca: RetrieveFincaResponse, opts?: { syncCodeInput?: boolean }) {
-    const fullSectorIds = (finca.sectorIds || []).map((sectorId: any) => finca.id.toString().padStart(4, "0") + sectorId.toString().padStart(4, "0"));
-    props.formSlot.sectorIdsPreview.value = fullSectorIds.join("-");
+    // "sector" = fincas hermanas del mismo socio (incluida esta), no una subdivisión de
+    // la finca. La vista previa muestra el bc_id real de cada una, no un código armado.
+    const sectores = finca.sectores || [];
+    props.formSlot.sectorIdsPreview.value = sectores.map(s => s.bc_id).join("-");
     if (opts?.syncCodeInput ?? true) {
         props.formSlot.fincaId.value = finca.bc_id ?? finca.id.toString().padStart(4, "0");
     }
     dialogState.value.selectedFincaSectorIds = finca.sectorIds || [];
+    dialogState.value.selectedFincaSectores = sectores;
     selectedFincaId.value = finca.id;
 
     if (props.formSlot.socioId.value && props.formSlot.fincaId.value && !dialogState.value.originalValues)
@@ -509,11 +512,16 @@ function onChangeFincaId(event: Event) {
     }
 
     fincaInputTimeout = setTimeout(async () => {
-        // Primero buscar en la lista ya cargada (cache local) por bc_id
+        // Primero buscar en la lista ya cargada (cache local) por bc_id. El bc_id de finca
+        // es {código de socio}{secuencia de 4 dígitos}: si el usuario escribe 1 a 4 dígitos,
+        // se interpreta como el número de secuencia (no un substring libre, que podría
+        // matchear el código de socio y devolver varias fincas en vez de una sola).
         const term = codigo.toLowerCase();
-        const coincidencias = fincasList.value.filter(f =>
-            (f.bc_id ?? '').toString().trim().toLowerCase().includes(term)
-        );
+        const term4 = /^\d{1,4}$/.test(codigo) ? codigo.padStart(4, "0") : null;
+        const coincidencias = fincasList.value.filter(f => {
+            const bcId = (f.bc_id ?? '').toString().trim().toLowerCase();
+            return term4 ? bcId.endsWith(term4) : bcId.includes(term);
+        });
 
         if (coincidencias.length > 0) {
             applyFincaSelection(coincidencias[0], { syncCodeInput: false });
@@ -559,6 +567,7 @@ function clearSectores() {
     props.formSlot.sectorIdsPreview.value = "";
     props.formSlot.sectorIds.value = [];
     dialogState.value.selectedFincaSectorIds = [];
+    dialogState.value.selectedFincaSectores = [];
 }
 
 function onClickCheckAll() {
@@ -760,12 +769,12 @@ onMounted(() => {
 					@click="onClickCheckAll"/>
 			</div>
 			<CheckboxGroup name="sectorIds" class="flex-1 flex flex-wrap gap-4 items-start">
-				<template v-for="(sectorId, index) in dialogState.selectedFincaSectorIds" :key="index">
+				<template v-for="sector in dialogState.selectedFincaSectores" :key="sector.id">
 					<div class="flex items-center gap-2">
-						<Checkbox :inputId="`albaran-sector-${index}`" :value="sectorId"/>
+						<Checkbox :inputId="`albaran-sector-${sector.id}`" :value="sector.id"/>
 					<label
-						:for="`albaran-sector-${index}`"
-						v-text="(selectedFincaId ?? 0).toString().padStart(4, '0') + sectorId.toString().padStart(4, '0')"></label>
+						:for="`albaran-sector-${sector.id}`"
+						v-text="sector.bc_id"></label>
 					</div>
 				</template>
 			</CheckboxGroup>

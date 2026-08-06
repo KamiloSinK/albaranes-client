@@ -250,12 +250,16 @@ async function onChangeFincaId(event: Event) {
     return
   }
 
-  // Buscar coincidencias por nombre o bc_id (ilike); si hay varias, usar la primera
+  // Buscar coincidencias por nombre o bc_id (ilike); si hay varias, usar la primera.
+  // El bc_id de finca es {código de socio}{secuencia de 4 dígitos}: si el usuario escribe
+  // 1 a 4 dígitos, se interpreta como el número de secuencia (sufijo), no un substring
+  // libre que podría matchear el código de socio.
   const term = codigo.toLowerCase()
+  const term4 = /^\d{1,4}$/.test(codigo) ? codigo.padStart(4, '0') : null
   const finca = fincasList.value.find(f => {
     const bc = (f.bc_id ?? '').toString().trim().toLowerCase()
     const nombre = (f.nombre ?? '').toLowerCase()
-    return bc.includes(term) || nombre.includes(term)
+    return term4 ? bc.endsWith(term4) : (bc.includes(term) || nombre.includes(term))
   })
 
   if (finca) {

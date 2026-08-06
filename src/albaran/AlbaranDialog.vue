@@ -19,7 +19,8 @@ import type {
 	NewAlbaranRequest,
 	RetrieveAbonoResponse,
 	RetrieveAlbaranResponse,
-	RetrieveProductResponse
+	RetrieveProductResponse,
+	RetrieveSectorResponse
 } from "@coa/api-types";
 import AbonoDialog from "@/albaran/AbonoDialog.vue";
 import AbonoTab from "@/albaran/tabs/AbonoTab.vue";
@@ -82,6 +83,9 @@ export interface AlbaranDialogState {
 	abonosTanqueB: AbonoData[];
 	currentEditAbonoTanque?: "A" | "B";
 	selectedFincaSectorIds: number[];
+	// "sector" = fincas hermanas del mismo socio (ver GeneralTab.vue); se guardan los
+	// objetos completos para poder mostrar el bc_id real de cada una, no solo su id.
+	selectedFincaSectores: RetrieveSectorResponse[];
 }
 
 const dialogState = reactive<AlbaranDialogState>({
@@ -89,6 +93,7 @@ const dialogState = reactive<AlbaranDialogState>({
 	products: [],
 	abonosTanqueA: [],
 	abonosTanqueB: [],
+	selectedFincaSectores: [],
 	selectedFincaSectorIds: []
 });
 
@@ -267,6 +272,7 @@ function onClickNew(formSlot: any) {
 			dialogState.abonosTanqueA = [];
 			dialogState.abonosTanqueB = [];
 			dialogState.selectedFincaSectorIds = [];
+			dialogState.selectedFincaSectores = [];
 			formSlot.reset();
 		}
 	});
