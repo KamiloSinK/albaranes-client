@@ -105,6 +105,8 @@ function onHideDialog() {
     dialogState.abonosTanqueA = [];
     dialogState.abonosTanqueB = [];
     dialogState.currentEditAbonoTanque = undefined;
+    dialogState.selectedFincaSectorIds = [];
+    dialogState.selectedFincaSectores = [];
 }
 
 function onClickDatosMenu(e: Event) {
