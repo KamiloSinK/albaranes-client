@@ -78,7 +78,7 @@ watch(isOnline, (online) => {
     sociosLazy.hasMore.value = false;
     fincasLazy.reset();
     fincasList.value = selectedSocioId.value
-      ? getFincas().filter((f: any) => f.socioId === selectedSocioId.value)
+      ? getFincas().filter((f: any) => (f.socioIds ?? []).includes(selectedSocioId.value))
       : [];
     fincasLazy.hasMore.value = false;
   }
@@ -192,7 +192,7 @@ async function loadInitialFincas() {
   await fincasLazy.loadInitial(
     (p) => fincas.retrieveFincas({ ...p, socioId: selectedSocioId.value! }),
     {
-      cacheFn: () => getFincas().filter((f: any) => f.socioId === selectedSocioId.value),
+      cacheFn: () => getFincas().filter((f: any) => (f.socioIds ?? []).includes(selectedSocioId.value)),
       isOnline: isOnline.value,
       hasSession: hasSession()
     }

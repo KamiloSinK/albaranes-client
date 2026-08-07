@@ -129,7 +129,7 @@ async function loadInitialFincas() {
     await fincasLazy.loadInitial(
         (p) => fincas.retrieveFincas({ ...p, socioId: selectedSocioId.value! }),
         {
-            cacheFn: () => getFincas().filter((f: any) => f.socioId === selectedSocioId.value),
+            cacheFn: () => getFincas().filter((f: any) => (f.socioIds ?? []).includes(selectedSocioId.value)),
             isOnline: isOnline.value,
             hasSession: hasSession()
         }

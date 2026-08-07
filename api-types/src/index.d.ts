@@ -134,6 +134,9 @@ export interface RetrieveFincaResponse {
 		id: number;
 		bc_id: string;
 		socioId: number | null;
+		// Todos los socios asociados a la finca (dueño + vecinos que comparten
+		// CABEZAL/cabeza de riego). Relación muchos-a-muchos: incluye siempre socioId.
+		socioIds: number[];
 		nombre: string;
 		sectorIds: number[];
 		sectores?: RetrieveSectorResponse[];

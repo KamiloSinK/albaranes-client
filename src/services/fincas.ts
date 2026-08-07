@@ -31,7 +31,9 @@ function filterCachedFincas(fincas: any[], filter: ExtendedRetrieveFincasQueryPa
     }
 
 	if (filter.socioId !== undefined && filter.socioId !== null) {
-		filtered = filtered.filter(finca => finca.socioId === filter.socioId);
+		// Relación muchos-a-muchos: una finca puede estar asociada a varios socios
+		// (dueño + vecinos que comparten cabeza de riego)
+		filtered = filtered.filter(finca => (finca.socioIds ?? []).includes(filter.socioId));
 	}
 
 	if (filter.activo !== undefined) {
